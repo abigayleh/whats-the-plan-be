@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String                    @id @default(uuid())
+  username       String                    @unique
+  passwordHash   String
+  memberships    GroupMember[]
+  conversations  ConversationParticipant[]
+  createdAt      DateTime                  @default(now())
+}
+
+model Group {
+  id            String          @id @default(uuid())
+  name          String
+  members       GroupMember[]
+  inviteCodes   InviteCode[]
+  events        Event[]
+  lists         List[]
+  polls         Poll[]
+  itineraries   Itinerary[]
+  conversations Conversation[]
+  createdAt     DateTime        @default(now())
+}
+
+model GroupMember {
+  userId    String
+  groupId   String
+  role      Role     @default(MEMBER)
+  color     String?
+  user      User     @relation(fields: [userId], references: [id])
+  group     Group    @relation(fields: [groupId], references: [id])
+  joinedAt  DateTime @default(now())
+
+  @@id([userId, groupId])
+}
+
+model InviteCode {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  groupId   String
+  group     Group     @relation(fields: [groupId], references: [id])
+  expiresAt DateTime?
+  revoked   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+}
+
+model Event {
+  id             String     @id @default(uuid())
+  title          String
+  description    String?
+  startAt        DateTime
+  endAt          DateTime
+  colorLabel     String?
+  createdById    String
+  groupId        String?
+  group          Group?     @relation(fields: [groupId], references: [id])
+  recurrenceRule Json?
+  itineraryId    String?
+  itinerary      Itinerary? @relation(fields: [itineraryId], references: [id])
+  createdAt      DateTime   @default(now())
+}
+
+model Itinerary {
+  id          String   @id @default(uuid())
+  title       String
+  destination String?
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  colorLabel  String?
+  createdById String
+  groupId     String?
+  group       Group?   @relation(fields: [groupId], references: [id])
+  events      Event[]
+  createdAt   DateTime @default(now())
+}
+
+model List {
+  id          String   @id @default(uuid())
+  name        String
+  ownerId     String
+  groupId     String?
+  group       Group?   @relation(fields: [groupId], references: [id])
+  isSystem    Boolean  @default(false)
+  tasks       Task[]
+  createdAt   DateTime @default(now())
+}
+
+model Task {
+  id           String       @id @default(uuid())
+  listId       String
+  list         List         @relation(fields: [listId], references: [id])
+  title        String
+  description  String?
+  status       TaskStatus   @default(TODO)
+  dueDate      DateTime?
+  assignedToId String?
+  createdById  String
+  attachments  Attachment[]
+  createdAt    DateTime     @default(now())
+}
+
+model Attachment {
+  id         String    @id @default(uuid())
+  filename   String
+  storedPath String
+  mimeType   String
+  sizeBytes  Int
+  uploadedBy String
+  taskId     String?
+  task       Task?     @relation(fields: [taskId], references: [id])
+  messageId  String?
+  message    Message?  @relation(fields: [messageId], references: [id])
+  createdAt  DateTime  @default(now())
+}
+
+model Poll {
+  id          String       @id @default(uuid())
+  question    String
+  groupId     String
+  group       Group        @relation(fields: [groupId], references: [id])
+  createdById String
+  expiresAt   DateTime?
+  options     PollOption[]
+  createdAt   DateTime     @default(now())
+}
+
+model PollOption {
+  id     String     @id @default(uuid())
+  pollId String
+  poll   Poll       @relation(fields: [pollId], references: [id])
+  text   String
+  votes  PollVote[]
+}
+
+model PollVote {
+  id           String     @id @default(uuid())
+  pollOptionId String
+  pollOption   PollOption @relation(fields: [pollOptionId], references: [id])
+  userId       String
+  createdAt    DateTime   @default(now())
+
+  @@unique([pollOptionId, userId])
+}
+
+model Conversation {
+  id           String                     @id @default(uuid())
+  name         String?
+  groupId      String?
+  group        Group?                     @relation(fields: [groupId], references: [id])
+  participants ConversationParticipant[]
+  messages     Message[]
+  createdAt    DateTime                   @default(now())
+}
+
+model ConversationParticipant {
+  userId         String
+  conversationId String
+  user           User         @relation(fields: [userId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@id([userId, conversationId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       String
+  text           String?
+  embed          Json?
+  attachments    Attachment[]
+  createdAt      DateTime     @default(now())
+}
+
+enum Role {
+  MEMBER
+  ADMIN
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
