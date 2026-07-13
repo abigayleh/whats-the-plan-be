@@ -5,12 +5,13 @@ const http = require('http');
 const { Server } = require('socket.io');
 const authRouter = require('./routes/auth');
 const groupsRouter = require('./routes/groups');
-const eventsRouter = require('./routes/events');
+const { router: eventsRouter } = require('./routes/events');
 const { router: listsRouter } = require('./routes/lists');
 const tasksRouter = require('./routes/tasks');
 const attachmentsRouter = require('./routes/attachments');
 const filesRouter = require('./routes/files');
 const { pollsRouter, groupPollsRouter } = require('./routes/polls');
+const itinerariesRouter = require('./routes/itineraries');
 const requireAuth = require('./middleware/requireAuth');
 const { initSocket } = require('./socket');
 
@@ -31,6 +32,7 @@ app.use('/api/attachments', requireAuth, attachmentsRouter);
 app.use('/api/files', requireAuth, filesRouter);
 app.use('/api/groups/:groupId/polls', requireAuth, groupPollsRouter);
 app.use('/api/polls', requireAuth, pollsRouter);
+app.use('/api/itineraries', requireAuth, itinerariesRouter);
 
 // JSON error handler — keeps unexpected errors from leaking stack traces.
 app.use((err, _req, res, _next) => {

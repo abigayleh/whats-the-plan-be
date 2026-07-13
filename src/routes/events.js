@@ -46,6 +46,59 @@ async function loadEditableEvent(eventId, userId) {
   return { status: 403, error: 'Not allowed to modify this event' };
 }
 
+// Validates that an itinerary is accessible and shares the event's scope.
+async function validateItineraryLink(itineraryId, userId, eventGroupId) {
+  const itin = await prisma.itinerary.findUnique({ where: { id: itineraryId } });
+  if (!itin) return { status: 404, error: 'Itinerary not found' };
+  if (itin.groupId === null) {
+    if (itin.createdById !== userId) return { status: 404, error: 'Itinerary not found' };
+  } else if (!(await getMembership(userId, itin.groupId))) {
+    return { status: 404, error: 'Itinerary not found' };
+  }
+  if (itin.groupId !== (eventGroupId || null))
+    return { status: 400, error: 'Itinerary scope must match the event' };
+  return { ok: true };
+}
+
+// Validates + creates an event and emits event:created. Returns { event, payload } or { status, error }.
+async function createEventForUser(userId, input) {
+  const { title, description, startAt, endAt, colorLabel, groupId, recurrenceRule, itineraryId } = input;
+  const name = String(title || '').trim();
+  if (!name) return { status: 400, error: 'Title required' };
+  const sDate = new Date(startAt);
+  const eDate = new Date(endAt);
+  if (isNaN(sDate.getTime()) || isNaN(eDate.getTime()))
+    return { status: 400, error: 'Valid startAt and endAt required' };
+  if (eDate < sDate) return { status: 400, error: 'endAt must be after startAt' };
+  if (recurrenceRule != null && !isValidRule(recurrenceRule))
+    return { status: 400, error: 'Invalid recurrenceRule' };
+
+  const gId = groupId || null;
+  if (gId && !(await getMembership(userId, gId)))
+    return { status: 403, error: 'Not a member of this group' };
+  if (itineraryId != null) {
+    const check = await validateItineraryLink(itineraryId, userId, gId);
+    if (!check.ok) return check;
+  }
+
+  const event = await prisma.event.create({
+    data: {
+      title: name,
+      description: description || null,
+      startAt: sDate,
+      endAt: eDate,
+      colorLabel: colorLabel || null,
+      groupId: gId,
+      createdById: userId,
+      recurrenceRule: recurrenceRule ?? undefined,
+      itineraryId: itineraryId || null,
+    },
+  });
+  const payload = serialize(event);
+  emitEvent(event, 'event:created', payload);
+  return { event, payload };
+}
+
 router.get('/', async (req, res) => {
   const { start, end, groups } = req.query;
   const startDate = new Date(start);
@@ -87,39 +140,9 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { title, description, startAt, endAt, colorLabel, groupId, recurrenceRule } = req.body || {};
-  const name = String(title || '').trim();
-  if (!name) return res.status(400).json({ error: 'Title required' });
-
-  const sDate = new Date(startAt);
-  const eDate = new Date(endAt);
-  if (isNaN(sDate.getTime()) || isNaN(eDate.getTime()))
-    return res.status(400).json({ error: 'Valid startAt and endAt required' });
-  if (eDate < sDate) return res.status(400).json({ error: 'endAt must be after startAt' });
-  if (recurrenceRule != null && !isValidRule(recurrenceRule))
-    return res.status(400).json({ error: 'Invalid recurrenceRule' });
-
-  if (groupId) {
-    const membership = await getMembership(req.userId, groupId);
-    if (!membership) return res.status(403).json({ error: 'Not a member of this group' });
-  }
-
-  const event = await prisma.event.create({
-    data: {
-      title: name,
-      description: description || null,
-      startAt: sDate,
-      endAt: eDate,
-      colorLabel: colorLabel || null,
-      groupId: groupId || null,
-      createdById: req.userId,
-      recurrenceRule: recurrenceRule ?? undefined,
-    },
-  });
-
-  const payload = serialize(event);
-  emitEvent(event, 'event:created', payload);
-  res.status(201).json(payload);
+  const result = await createEventForUser(req.userId, req.body || {});
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.status(201).json(result.payload);
 });
 
 router.patch('/:id', async (req, res) => {
@@ -152,6 +175,14 @@ router.patch('/:id', async (req, res) => {
     else if (isValidRule(body.recurrenceRule)) data.recurrenceRule = body.recurrenceRule;
     else return res.status(400).json({ error: 'Invalid recurrenceRule' });
   }
+  if ('itineraryId' in body) {
+    if (body.itineraryId == null) data.itineraryId = null;
+    else {
+      const check = await validateItineraryLink(body.itineraryId, req.userId, event.groupId);
+      if (!check.ok) return res.status(check.status).json({ error: check.error });
+      data.itineraryId = body.itineraryId;
+    }
+  }
 
   const updated = await prisma.event.update({ where: { id: event.id }, data });
   const payload = serialize(updated);
@@ -167,4 +198,4 @@ router.delete('/:id', async (req, res) => {
   res.status(204).end();
 });
 
-module.exports = router;
+module.exports = { router, serializeEvent: serialize, createEventForUser };

@@ -74,7 +74,7 @@ model Event {
   group          Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   recurrenceRule Json?
   itineraryId    String?
-  itinerary      Itinerary? @relation(fields: [itineraryId], references: [id])
+  itinerary      Itinerary? @relation(fields: [itineraryId], references: [id], onDelete: SetNull)
   createdAt      DateTime   @default(now())
 }
 
