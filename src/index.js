@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const authRouter = require('./routes/auth');
 const groupsRouter = require('./routes/groups');
 const requireAuth = require('./middleware/requireAuth');
+const { initSocket } = require('./socket');
 
 const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
@@ -29,11 +30,7 @@ const io = new Server(httpServer, {
   cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:5173' },
 });
 
-io.on('connection', (socket) => {
-  socket.on('ping', () => {
-    socket.emit('pong');
-  });
-});
+initSocket(io);
 
 const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {

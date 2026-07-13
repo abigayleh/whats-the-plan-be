@@ -3,6 +3,12 @@ const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { publicUser } = require('../lib/serializers');
 const { requireMember, requireAdmin } = require('../middleware/groupAuth');
+const {
+  emitToGroup,
+  addUserToGroupRoom,
+  removeUserFromGroupRoom,
+  clearGroupRoom,
+} = require('../socket');
 
 const router = express.Router();
 
@@ -62,7 +68,15 @@ router.post('/join/:code', async (req, res) => {
   if (existing) return res.status(409).json({ error: 'Already a member', code: 'ALREADY_MEMBER' });
 
   await prisma.groupMember.create({ data: { userId: req.userId, groupId: invite.groupId, role: 'MEMBER' } });
-  const group = await prisma.group.findUnique({ where: { id: invite.groupId } });
+  const [group, user] = await Promise.all([
+    prisma.group.findUnique({ where: { id: invite.groupId } }),
+    prisma.user.findUnique({ where: { id: req.userId } }),
+  ]);
+  addUserToGroupRoom(req.userId, invite.groupId);
+  emitToGroup(invite.groupId, 'group:member-joined', {
+    groupId: invite.groupId,
+    member: { ...publicUser(user), role: 'MEMBER' },
+  });
   res.status(201).json({ id: group.id, name: group.name, createdAt: group.createdAt, role: 'MEMBER' });
 });
 
@@ -103,6 +117,8 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 
 router.delete('/:id', requireAdmin, async (req, res) => {
   await prisma.group.delete({ where: { id: req.params.id } });
+  emitToGroup(req.params.id, 'group:deleted', { groupId: req.params.id });
+  clearGroupRoom(req.params.id);
   res.status(204).end();
 });
 
@@ -135,6 +151,8 @@ router.delete('/:id/members/:userId', requireAdmin, async (req, res) => {
   const target = await prisma.groupMember.findUnique({ where: memberKey(req.params.userId, req.params.id) });
   if (!target) return res.status(404).json({ error: 'Member not found' });
   await prisma.groupMember.delete({ where: memberKey(req.params.userId, req.params.id) });
+  emitToGroup(req.params.id, 'group:member-left', { groupId: req.params.id, userId: req.params.userId });
+  removeUserFromGroupRoom(req.params.userId, req.params.id);
   res.status(204).end();
 });
 
@@ -159,6 +177,8 @@ router.post('/:id/leave', requireMember, async (req, res) => {
   if (req.membership.role === 'ADMIN' && (await countAdmins(req.params.id)) <= 1)
     return res.status(403).json({ error: 'You are the last admin', code: 'LAST_ADMIN' });
   await prisma.groupMember.delete({ where: memberKey(req.userId, req.params.id) });
+  emitToGroup(req.params.id, 'group:member-left', { groupId: req.params.id, userId: req.userId });
+  removeUserFromGroupRoom(req.userId, req.params.id);
   res.status(204).end();
 });
 
