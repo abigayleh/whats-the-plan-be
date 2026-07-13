@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { issueTokens, rotateRefreshToken, revokeRefreshToken } = require('../lib/tokens');
 const { publicUser } = require('../lib/serializers');
+const requireAuth = require('../middleware/requireAuth');
 
 const router = express.Router();
 
@@ -12,13 +13,15 @@ const MIN_PASSWORD = 8;
 router.post('/register', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = req.body?.password || '';
+  const name = String(req.body?.name || '').trim();
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Valid email required' });
   if (password.length < MIN_PASSWORD)
     return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD} characters` });
+  if (!name) return res.status(400).json({ error: 'Name required' });
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({ data: { email, passwordHash } });
+    const user = await prisma.user.create({ data: { email, name, passwordHash } });
     const tokens = await issueTokens(user.id);
     return res.status(201).json({ user: publicUser(user), ...tokens });
   } catch (err) {
@@ -49,6 +52,12 @@ router.post('/refresh', async (req, res) => {
 router.post('/logout', async (req, res) => {
   await revokeRefreshToken(req.body?.refreshToken || '');
   return res.status(204).end();
+});
+
+router.get('/me', requireAuth, async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  return res.json({ user: publicUser(user) });
 });
 
 module.exports = router;

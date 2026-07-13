@@ -1,5 +1,5 @@
 // Shapes a User row for API responses — never leaks passwordHash.
-const publicUser = (user) => ({ id: user.id, email: user.email });
+const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name });
 
 // Shapes an Attachment for API responses — never leaks storedPath.
 const serializeAttachment = (att) => ({
