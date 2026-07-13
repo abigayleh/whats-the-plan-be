@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { getMembership } = require('../lib/membership');
 const { loadListAccess, loadEditableTask, isValidAssignee } = require('../lib/listAccess');
+const { serializeAttachment } = require('../lib/serializers');
 const { emitToGroup, emitToUser } = require('../socket');
 
 const router = express.Router();
@@ -28,6 +29,7 @@ const serializeTask = (task) => ({
   assignedToId: task.assignedToId,
   createdById: task.createdById,
   createdAt: task.createdAt,
+  attachments: (task.attachments || []).map(serializeAttachment),
 });
 
 // Routes a list/task event to the group room, or the owner's room if private.
@@ -99,7 +101,11 @@ router.delete('/:id', async (req, res) => {
 router.get('/:listId/tasks', async (req, res) => {
   const access = await loadListAccess(req.params.listId, req.userId);
   if (access.error) return res.status(access.status).json({ error: access.error });
-  const tasks = await prisma.task.findMany({ where: { listId: req.params.listId }, orderBy: { createdAt: 'asc' } });
+  const tasks = await prisma.task.findMany({
+    where: { listId: req.params.listId },
+    include: { attachments: true },
+    orderBy: { createdAt: 'asc' },
+  });
   res.json(tasks.map(serializeTask));
 });
 
@@ -180,4 +186,13 @@ router.delete('/:listId/tasks/:id', async (req, res) => {
   res.status(204).end();
 });
 
-module.exports = { router, serializeTask };
+// Broadcasts a fresh task:updated (with current attachments) after an attachment change.
+async function emitTaskUpdated(taskId) {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    include: { list: true, attachments: true },
+  });
+  if (task) emitScoped(task.list, 'task:updated', serializeTask(task));
+}
+
+module.exports = { router, serializeTask, emitTaskUpdated };

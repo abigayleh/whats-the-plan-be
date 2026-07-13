@@ -16,6 +16,7 @@ router.get('/assigned-to-me', async (req, res) => {
   const groupIds = await memberGroups(req.userId);
   const tasks = await prisma.task.findMany({
     where: { assignedToId: req.userId, list: visibleListFilter(req.userId, groupIds) },
+    include: { attachments: true },
     orderBy: { dueDate: 'asc' },
   });
   res.json(tasks.map(serializeTask));
@@ -32,6 +33,7 @@ router.get('/calendar', async (req, res) => {
   const groupIds = await memberGroups(req.userId);
   const tasks = await prisma.task.findMany({
     where: { dueDate: { gte: startDate, lte: endDate }, list: visibleListFilter(req.userId, groupIds) },
+    include: { attachments: true },
     orderBy: { dueDate: 'asc' },
   });
   res.json(tasks.map(serializeTask));

@@ -17,9 +17,10 @@ async function loadListAccess(listId, userId) {
 }
 
 // Loads a task the user can edit/delete (creator or group admin).
+// listId is optional; when given, the task must belong to it.
 async function loadEditableTask(taskId, listId, userId) {
   const task = await prisma.task.findUnique({ where: { id: taskId } });
-  if (!task || task.listId !== listId) return { status: 404, error: 'Task not found' };
+  if (!task || (listId != null && task.listId !== listId)) return { status: 404, error: 'Task not found' };
   const access = await loadListAccess(task.listId, userId);
   if (access.error) return { status: 404, error: 'Task not found' };
   const isAdmin = access.membership?.role === 'ADMIN';

@@ -8,6 +8,8 @@ const groupsRouter = require('./routes/groups');
 const eventsRouter = require('./routes/events');
 const { router: listsRouter } = require('./routes/lists');
 const tasksRouter = require('./routes/tasks');
+const attachmentsRouter = require('./routes/attachments');
+const filesRouter = require('./routes/files');
 const requireAuth = require('./middleware/requireAuth');
 const { initSocket } = require('./socket');
 
@@ -24,6 +26,8 @@ app.use('/api/groups', requireAuth, groupsRouter);
 app.use('/api/events', requireAuth, eventsRouter);
 app.use('/api/lists', requireAuth, listsRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
+app.use('/api/attachments', requireAuth, attachmentsRouter);
+app.use('/api/files', requireAuth, filesRouter);
 
 // JSON error handler — keeps unexpected errors from leaking stack traces.
 app.use((err, _req, res, _next) => {
