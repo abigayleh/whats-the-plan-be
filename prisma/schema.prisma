@@ -140,6 +140,7 @@ model Poll {
   createdById String
   expiresAt   DateTime?
   options     PollOption[]
+  votes       PollVote[]
   createdAt   DateTime     @default(now())
 }
 
@@ -153,12 +154,14 @@ model PollOption {
 
 model PollVote {
   id           String     @id @default(uuid())
+  pollId       String
+  poll         Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
   pollOptionId String
   pollOption   PollOption @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
   userId       String
   createdAt    DateTime   @default(now())
 
-  @@unique([pollOptionId, userId])
+  @@unique([pollId, userId])
 }
 
 model Conversation {

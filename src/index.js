@@ -10,6 +10,7 @@ const { router: listsRouter } = require('./routes/lists');
 const tasksRouter = require('./routes/tasks');
 const attachmentsRouter = require('./routes/attachments');
 const filesRouter = require('./routes/files');
+const { pollsRouter, groupPollsRouter } = require('./routes/polls');
 const requireAuth = require('./middleware/requireAuth');
 const { initSocket } = require('./socket');
 
@@ -28,6 +29,8 @@ app.use('/api/lists', requireAuth, listsRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/attachments', requireAuth, attachmentsRouter);
 app.use('/api/files', requireAuth, filesRouter);
+app.use('/api/groups/:groupId/polls', requireAuth, groupPollsRouter);
+app.use('/api/polls', requireAuth, pollsRouter);
 
 // JSON error handler — keeps unexpected errors from leaking stack traces.
 app.use((err, _req, res, _next) => {
