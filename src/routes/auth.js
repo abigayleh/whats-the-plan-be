@@ -2,13 +2,12 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { issueTokens, rotateRefreshToken, revokeRefreshToken } = require('../lib/tokens');
+const { publicUser } = require('../lib/serializers');
 
 const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
-
-const publicUser = (user) => ({ id: user.id, email: user.email });
 
 router.post('/register', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();

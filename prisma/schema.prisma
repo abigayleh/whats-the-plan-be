@@ -46,7 +46,7 @@ model GroupMember {
   role      Role     @default(MEMBER)
   color     String?
   user      User     @relation(fields: [userId], references: [id])
-  group     Group    @relation(fields: [groupId], references: [id])
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   joinedAt  DateTime @default(now())
 
   @@id([userId, groupId])
@@ -56,7 +56,7 @@ model InviteCode {
   id        String    @id @default(uuid())
   code      String    @unique
   groupId   String
-  group     Group     @relation(fields: [groupId], references: [id])
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   expiresAt DateTime?
   revoked   Boolean   @default(false)
   createdAt DateTime  @default(now())
@@ -71,7 +71,7 @@ model Event {
   colorLabel     String?
   createdById    String
   groupId        String?
-  group          Group?     @relation(fields: [groupId], references: [id])
+  group          Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   recurrenceRule Json?
   itineraryId    String?
   itinerary      Itinerary? @relation(fields: [itineraryId], references: [id])
@@ -88,7 +88,7 @@ model Itinerary {
   colorLabel  String?
   createdById String
   groupId     String?
-  group       Group?   @relation(fields: [groupId], references: [id])
+  group       Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   events      Event[]
   createdAt   DateTime @default(now())
 }
@@ -98,7 +98,7 @@ model List {
   name        String
   ownerId     String
   groupId     String?
-  group       Group?   @relation(fields: [groupId], references: [id])
+  group       Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   isSystem    Boolean  @default(false)
   tasks       Task[]
   createdAt   DateTime @default(now())
@@ -107,7 +107,7 @@ model List {
 model Task {
   id           String       @id @default(uuid())
   listId       String
-  list         List         @relation(fields: [listId], references: [id])
+  list         List         @relation(fields: [listId], references: [id], onDelete: Cascade)
   title        String
   description  String?
   status       TaskStatus   @default(TODO)
@@ -126,9 +126,9 @@ model Attachment {
   sizeBytes  Int
   uploadedBy String
   taskId     String?
-  task       Task?     @relation(fields: [taskId], references: [id])
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   messageId  String?
-  message    Message?  @relation(fields: [messageId], references: [id])
+  message    Message?  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   createdAt  DateTime  @default(now())
 }
 
@@ -136,7 +136,7 @@ model Poll {
   id          String       @id @default(uuid())
   question    String
   groupId     String
-  group       Group        @relation(fields: [groupId], references: [id])
+  group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdById String
   expiresAt   DateTime?
   options     PollOption[]
@@ -146,7 +146,7 @@ model Poll {
 model PollOption {
   id     String     @id @default(uuid())
   pollId String
-  poll   Poll       @relation(fields: [pollId], references: [id])
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
   text   String
   votes  PollVote[]
 }
@@ -154,7 +154,7 @@ model PollOption {
 model PollVote {
   id           String     @id @default(uuid())
   pollOptionId String
-  pollOption   PollOption @relation(fields: [pollOptionId], references: [id])
+  pollOption   PollOption @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
   userId       String
   createdAt    DateTime   @default(now())
 
@@ -165,7 +165,7 @@ model Conversation {
   id           String                     @id @default(uuid())
   name         String?
   groupId      String?
-  group        Group?                     @relation(fields: [groupId], references: [id])
+  group        Group?                     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   participants ConversationParticipant[]
   messages     Message[]
   createdAt    DateTime                   @default(now())
@@ -175,7 +175,7 @@ model ConversationParticipant {
   userId         String
   conversationId String
   user           User         @relation(fields: [userId], references: [id])
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@id([userId, conversationId])
 }
@@ -183,7 +183,7 @@ model ConversationParticipant {
 model Message {
   id             String       @id @default(uuid())
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderId       String
   text           String?
   embed          Json?
