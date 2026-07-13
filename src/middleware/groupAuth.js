@@ -1,10 +1,8 @@
-const prisma = require('../lib/prisma');
+const { getMembership } = require('../lib/membership');
 
 // Loads the requester's membership for :id. 404 if not a member (doesn't leak existence).
 async function requireMember(req, res, next) {
-  const membership = await prisma.groupMember.findUnique({
-    where: { userId_groupId: { userId: req.userId, groupId: req.params.id } },
-  });
+  const membership = await getMembership(req.userId, req.params.id);
   if (!membership) return res.status(404).json({ error: 'Group not found' });
   req.membership = membership;
   next();

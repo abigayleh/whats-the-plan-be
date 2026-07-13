@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const authRouter = require('./routes/auth');
 const groupsRouter = require('./routes/groups');
+const eventsRouter = require('./routes/events');
 const requireAuth = require('./middleware/requireAuth');
 const { initSocket } = require('./socket');
 
@@ -18,6 +19,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/groups', requireAuth, groupsRouter);
+app.use('/api/events', requireAuth, eventsRouter);
 
 // JSON error handler — keeps unexpected errors from leaking stack traces.
 app.use((err, _req, res, _next) => {
