@@ -215,15 +215,33 @@ router.patch('/:listId/tasks/:id', async (req, res) => {
   const scheduleError = validateSchedule({ ...result.task, ...data });
   if (scheduleError) return res.status(400).json({ error: scheduleError });
 
+  // Moving a task re-scopes it, so the target list drives the assignee check.
+  let targetList = result.list;
+  if (body.listId !== undefined && body.listId !== result.task.listId) {
+    const target = await loadListAccess(body.listId, req.userId);
+    if (target.error) return res.status(400).json({ error: 'Invalid target list' });
+    targetList = target.list;
+    data.listId = targetList.id;
+  }
+
   if (body.assignedToId !== undefined) {
     const assignee = body.assignedToId || null;
-    if (!(await isValidAssignee(assignee, result.list))) return res.status(400).json({ error: 'Invalid assignee' });
+    if (!(await isValidAssignee(assignee, targetList))) return res.status(400).json({ error: 'Invalid assignee' });
     data.assignedToId = assignee;
+  } else if (targetList.id !== result.list.id && !(await isValidAssignee(result.task.assignedToId, targetList))) {
+    data.assignedToId = null; // the old assignee isn't in the target scope — drop rather than reject
   }
 
   const task = await prisma.task.update({ where: { id: req.params.id }, data, include: taskInclude });
   const payload = serializeTask(task);
-  emitScoped(result.list, 'task:updated', payload);
+
+  // A cross-scope move leaves the old room and joins a new one, so mirror it as delete + create.
+  if (targetList.groupId !== result.list.groupId || targetList.ownerId !== result.list.ownerId) {
+    emitScoped(result.list, 'task:deleted', { id: task.id, listId: result.task.listId });
+    emitScoped(targetList, 'task:created', payload);
+  } else {
+    emitScoped(targetList, 'task:updated', payload);
+  }
   res.json(payload);
 });
 
