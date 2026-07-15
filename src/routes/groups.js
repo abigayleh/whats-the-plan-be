@@ -52,10 +52,11 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Group name required' });
+  const color = req.body?.color || null;
   const group = await prisma.group.create({
-    data: { name, members: { create: { userId: req.userId, role: 'ADMIN' } } },
+    data: { name, members: { create: { userId: req.userId, role: 'ADMIN', color } } },
   });
-  res.status(201).json({ id: group.id, name: group.name, createdAt: group.createdAt, role: 'ADMIN' });
+  res.status(201).json({ id: group.id, name: group.name, createdAt: group.createdAt, role: 'ADMIN', color });
 });
 
 // Join must be declared before "/:id" routes so the code isn't read as an id.
@@ -141,6 +142,13 @@ router.delete('/:id/invite/:code', requireAdmin, async (req, res) => {
     data: { revoked: true },
   });
   res.status(204).end();
+});
+
+// Sets the requester's own color for a group (per-member, used for calendar layering).
+router.patch('/:id/color', requireMember, async (req, res) => {
+  const color = req.body?.color || null;
+  await prisma.groupMember.update({ where: memberKey(req.userId, req.params.id), data: { color } });
+  res.json({ groupId: req.params.id, color });
 });
 
 // --- Members ---
