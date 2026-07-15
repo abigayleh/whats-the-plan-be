@@ -33,10 +33,10 @@ router.get('/calendar', async (req, res) => {
   const groupIds = await memberGroups(req.userId);
   const tasks = await prisma.task.findMany({
     where: { dueDate: { gte: startDate, lte: endDate }, list: visibleListFilter(req.userId, groupIds) },
-    include: { attachments: true },
+    include: { attachments: true, list: { select: { groupId: true } } },
     orderBy: { dueDate: 'asc' },
   });
-  res.json(tasks.map(serializeTask));
+  res.json(tasks.map((t) => ({ ...serializeTask(t), groupId: t.list.groupId })));
 });
 
 module.exports = router;
