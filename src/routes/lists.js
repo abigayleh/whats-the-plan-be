@@ -2,12 +2,14 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { getMembership } = require('../lib/membership');
 const { loadListAccess, loadEditableTask, isValidAssignee } = require('../lib/listAccess');
-const { serializeAttachment } = require('../lib/serializers');
+const { serializeAttachment, publicUser } = require('../lib/serializers');
+const { isValidRule } = require('../lib/recurrence');
 const { emitToGroup, emitToUser } = require('../socket');
 
 const router = express.Router();
 
 const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'DONE'];
+const DATE_FIELDS = ['dueDate', 'scheduledStart', 'scheduledEnd'];
 
 const serializeList = (list) => ({
   id: list.id,
@@ -15,6 +17,7 @@ const serializeList = (list) => ({
   ownerId: list.ownerId,
   groupId: list.groupId,
   isSystem: list.isSystem,
+  icon: list.icon,
   createdAt: list.createdAt,
   taskCount: list._count?.tasks ?? 0,
 });
@@ -26,11 +29,69 @@ const serializeTask = (task) => ({
   description: task.description,
   status: task.status,
   dueDate: task.dueDate,
+  scheduledStart: task.scheduledStart,
+  scheduledEnd: task.scheduledEnd,
+  recurrenceRule: task.recurrenceRule,
+  subtasks: task.subtasks || [],
   assignedToId: task.assignedToId,
+  assignee: task.assignee ? publicUser(task.assignee) : null,
   createdById: task.createdById,
   createdAt: task.createdAt,
   attachments: (task.attachments || []).map(serializeAttachment),
 });
+
+const taskInclude = { attachments: true, assignee: true };
+
+const isValidSubtasks = (value) => Array.isArray(value) && value.every((s) => (
+  s && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.done === 'boolean'
+));
+
+// Validates the fields present in body. `partial` skips required checks (PATCH).
+function buildTaskData(body, { partial }) {
+  const data = {};
+  if (body.title !== undefined || !partial) {
+    const title = String(body.title || '').trim();
+    if (!title) return { error: 'Title required' };
+    data.title = title;
+  }
+  if (body.description !== undefined) data.description = body.description || null;
+  if (body.status !== undefined) {
+    if (!TASK_STATUSES.includes(body.status)) return { error: 'Invalid status' };
+    data.status = body.status;
+  }
+  for (const field of DATE_FIELDS) {
+    if (body[field] === undefined) continue;
+    if (body[field] == null) {
+      data[field] = null;
+      continue;
+    }
+    const date = new Date(body[field]);
+    if (isNaN(date.getTime())) return { error: `Invalid ${field}` };
+    data[field] = date;
+  }
+  if (body.recurrenceRule !== undefined) {
+    if (body.recurrenceRule == null) data.recurrenceRule = null;
+    else if (!isValidRule(body.recurrenceRule)) return { error: 'Invalid recurrenceRule' };
+    else data.recurrenceRule = body.recurrenceRule;
+  }
+  if (body.subtasks !== undefined) {
+    if (body.subtasks == null) data.subtasks = [];
+    else if (!isValidSubtasks(body.subtasks)) return { error: 'Invalid subtasks' };
+    else data.subtasks = body.subtasks;
+  }
+  return { data };
+}
+
+// A task is either date-only (dueDate) or timed (scheduledStart+End), never half-timed.
+function validateSchedule(task) {
+  if ((task.scheduledStart == null) !== (task.scheduledEnd == null))
+    return 'scheduledStart and scheduledEnd must be set together';
+  if (task.scheduledStart && task.scheduledEnd < task.scheduledStart)
+    return 'scheduledEnd must be after scheduledStart';
+  if (task.recurrenceRule && !task.dueDate && !task.scheduledStart)
+    return 'A recurring task needs a dueDate or a scheduled time';
+  return null;
+}
 
 // Routes a list/task event to the group room, or the owner's room if private.
 const emitScoped = (list, type, payload) =>
@@ -65,7 +126,9 @@ router.post('/', async (req, res) => {
   if (groupId && !(await getMembership(req.userId, groupId)))
     return res.status(403).json({ error: 'Not a member of this group' });
 
-  const list = await prisma.list.create({ data: { name, ownerId: req.userId, groupId } });
+  const list = await prisma.list.create({
+    data: { name, ownerId: req.userId, groupId, icon: req.body?.icon || null },
+  });
   const payload = serializeList(list);
   emitScoped(list, 'list:created', payload);
   res.status(201).json(payload);
@@ -79,8 +142,10 @@ router.patch('/:id', async (req, res) => {
     return res.status(400).json({ error: 'List scope is immutable' });
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'List name required' });
+  const data = { name };
+  if (req.body.icon !== undefined) data.icon = req.body.icon || null;
 
-  const list = await prisma.list.update({ where: { id: req.params.id }, data: { name } });
+  const list = await prisma.list.update({ where: { id: req.params.id }, data });
   const payload = serializeList(list);
   emitScoped(list, 'list:updated', payload);
   res.json(payload);
@@ -103,7 +168,7 @@ router.get('/:listId/tasks', async (req, res) => {
   if (access.error) return res.status(access.status).json({ error: access.error });
   const tasks = await prisma.task.findMany({
     where: { listId: req.params.listId },
-    include: { attachments: true },
+    include: taskInclude,
     orderBy: { createdAt: 'asc' },
   });
   res.json(tasks.map(serializeTask));
@@ -113,29 +178,25 @@ router.post('/:listId/tasks', async (req, res) => {
   const access = await loadListAccess(req.params.listId, req.userId);
   if (access.error) return res.status(access.status).json({ error: access.error });
 
-  const { title, description, status, dueDate, assignedToId } = req.body || {};
-  const name = String(title || '').trim();
-  if (!name) return res.status(400).json({ error: 'Title required' });
-  if (status !== undefined && !TASK_STATUSES.includes(status))
-    return res.status(400).json({ error: 'Invalid status' });
-  let due = null;
-  if (dueDate != null) {
-    due = new Date(dueDate);
-    if (isNaN(due.getTime())) return res.status(400).json({ error: 'Invalid dueDate' });
-  }
-  if (!(await isValidAssignee(assignedToId ?? null, access.list)))
+  const built = buildTaskData(req.body || {}, { partial: false });
+  if (built.error) return res.status(400).json({ error: built.error });
+  const { data } = built;
+
+  const scheduleError = validateSchedule({
+    dueDate: data.dueDate ?? null,
+    scheduledStart: data.scheduledStart ?? null,
+    scheduledEnd: data.scheduledEnd ?? null,
+    recurrenceRule: data.recurrenceRule ?? null,
+  });
+  if (scheduleError) return res.status(400).json({ error: scheduleError });
+
+  const assignedToId = req.body?.assignedToId || null;
+  if (!(await isValidAssignee(assignedToId, access.list)))
     return res.status(400).json({ error: 'Invalid assignee' });
 
   const task = await prisma.task.create({
-    data: {
-      listId: req.params.listId,
-      title: name,
-      description: description || null,
-      status: status || 'TODO',
-      dueDate: due,
-      assignedToId: assignedToId || null,
-      createdById: req.userId,
-    },
+    data: { ...data, listId: req.params.listId, assignedToId, createdById: req.userId },
+    include: taskInclude,
   });
   const payload = serializeTask(task);
   emitScoped(access.list, 'task:created', payload);
@@ -147,32 +208,20 @@ router.patch('/:listId/tasks/:id', async (req, res) => {
   if (result.error) return res.status(result.status).json({ error: result.error });
 
   const body = req.body || {};
-  const data = {};
-  if (body.title !== undefined) {
-    const n = String(body.title).trim();
-    if (!n) return res.status(400).json({ error: 'Title required' });
-    data.title = n;
-  }
-  if (body.description !== undefined) data.description = body.description || null;
-  if (body.status !== undefined) {
-    if (!TASK_STATUSES.includes(body.status)) return res.status(400).json({ error: 'Invalid status' });
-    data.status = body.status;
-  }
-  if (body.dueDate !== undefined) {
-    if (body.dueDate == null) data.dueDate = null;
-    else {
-      const d = new Date(body.dueDate);
-      if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid dueDate' });
-      data.dueDate = d;
-    }
-  }
+  const built = buildTaskData(body, { partial: true });
+  if (built.error) return res.status(400).json({ error: built.error });
+  const { data } = built;
+
+  const scheduleError = validateSchedule({ ...result.task, ...data });
+  if (scheduleError) return res.status(400).json({ error: scheduleError });
+
   if (body.assignedToId !== undefined) {
     const assignee = body.assignedToId || null;
     if (!(await isValidAssignee(assignee, result.list))) return res.status(400).json({ error: 'Invalid assignee' });
     data.assignedToId = assignee;
   }
 
-  const task = await prisma.task.update({ where: { id: req.params.id }, data });
+  const task = await prisma.task.update({ where: { id: req.params.id }, data, include: taskInclude });
   const payload = serializeTask(task);
   emitScoped(result.list, 'task:updated', payload);
   res.json(payload);
@@ -190,7 +239,7 @@ router.delete('/:listId/tasks/:id', async (req, res) => {
 async function emitTaskUpdated(taskId) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    include: { list: true, attachments: true },
+    include: { ...taskInclude, list: true },
   });
   if (task) emitScoped(task.list, 'task:updated', serializeTask(task));
 }

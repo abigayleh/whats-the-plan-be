@@ -1,8 +1,12 @@
 const express = require('express');
+const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { serializeTask } = require('./lists');
+const { expandOccurrences, isValidRule } = require('../lib/recurrence');
 
 const router = express.Router();
+
+const taskInclude = { attachments: true, assignee: true };
 
 // Lists visible to the user: private ones they own + group lists in their groups.
 const visibleListFilter = (userId, memberGroupIds) => ({
@@ -12,11 +16,32 @@ const visibleListFilter = (userId, memberGroupIds) => ({
 const memberGroups = async (userId) =>
   (await prisma.groupMember.findMany({ where: { userId }, select: { groupId: true } })).map((m) => m.groupId);
 
+// A task sits on the calendar at its scheduled time, or else its due date.
+const anchorOf = (task) => task.scheduledStart || task.dueDate;
+
+// Expands a task into calendar instances, reusing the event expander via its anchor.
+function expandTask(task, windowStart, windowEnd) {
+  const start = anchorOf(task);
+  if (!start) return [];
+  const shim = { startAt: start, endAt: task.scheduledEnd || start, recurrenceRule: task.recurrenceRule };
+  const isRecurring = isValidRule(task.recurrenceRule);
+
+  return expandOccurrences(shim, windowStart, windowEnd).map((occ) => ({
+    ...serializeTask(task),
+    groupId: task.list.groupId,
+    isRecurring,
+    instanceId: isRecurring ? `${task.id}@${occ.startAt.toISOString()}` : task.id,
+    ...(task.scheduledStart
+      ? { scheduledStart: occ.startAt, scheduledEnd: occ.endAt }
+      : { dueDate: occ.startAt }),
+  }));
+}
+
 router.get('/assigned-to-me', async (req, res) => {
   const groupIds = await memberGroups(req.userId);
   const tasks = await prisma.task.findMany({
     where: { assignedToId: req.userId, list: visibleListFilter(req.userId, groupIds) },
-    include: { attachments: true },
+    include: taskInclude,
     orderBy: { dueDate: 'asc' },
   });
   res.json(tasks.map(serializeTask));
@@ -32,11 +57,19 @@ router.get('/calendar', async (req, res) => {
 
   const groupIds = await memberGroups(req.userId);
   const tasks = await prisma.task.findMany({
-    where: { dueDate: { gte: startDate, lte: endDate }, list: visibleListFilter(req.userId, groupIds) },
-    include: { attachments: true, list: { select: { groupId: true } } },
+    where: {
+      list: visibleListFilter(req.userId, groupIds),
+      // Recurring tasks are fetched whatever their anchor — expansion decides if they land in-window.
+      OR: [
+        { dueDate: { gte: startDate, lte: endDate } },
+        { scheduledStart: { gte: startDate, lte: endDate } },
+        { recurrenceRule: { not: Prisma.DbNull } },
+      ],
+    },
+    include: { ...taskInclude, list: { select: { groupId: true } } },
     orderBy: { dueDate: 'asc' },
   });
-  res.json(tasks.map((t) => ({ ...serializeTask(t), groupId: t.list.groupId })));
+  res.json(tasks.flatMap((task) => expandTask(task, startDate, endDate)));
 });
 
 module.exports = router;

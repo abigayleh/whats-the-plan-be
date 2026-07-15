@@ -16,6 +16,7 @@ model User {
   memberships    GroupMember[]
   conversations  ConversationParticipant[]
   refreshTokens  RefreshToken[]
+  assignedTasks  Task[]                    @relation("TaskAssignee")
   createdAt      DateTime                  @default(now())
 }
 
@@ -101,22 +102,28 @@ model List {
   groupId     String?
   group       Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   isSystem    Boolean  @default(false)
+  icon        String?
   tasks       Task[]
   createdAt   DateTime @default(now())
 }
 
 model Task {
-  id           String       @id @default(uuid())
-  listId       String
-  list         List         @relation(fields: [listId], references: [id], onDelete: Cascade)
-  title        String
-  description  String?
-  status       TaskStatus   @default(TODO)
-  dueDate      DateTime?
-  assignedToId String?
-  createdById  String
-  attachments  Attachment[]
-  createdAt    DateTime     @default(now())
+  id             String       @id @default(uuid())
+  listId         String
+  list           List         @relation(fields: [listId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  status         TaskStatus   @default(TODO)
+  dueDate        DateTime?
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  recurrenceRule Json?        // { frequency: 'daily'|'weekly'|'monthly'|'yearly', interval: number }
+  subtasks       Json?        // [{ id, title, done }] — always edited as a whole with the task
+  assignedToId   String?
+  assignee       User?        @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdById    String
+  attachments    Attachment[]
+  createdAt      DateTime     @default(now())
 }
 
 model Attachment {
