@@ -569,3 +569,4 @@ src/
 - **File storage swap**: change write/read logic in attachment service only — DB schema and API routes are unchanged.
 - **Poll scope**: polls are always group-scoped (no private polls — doesn't make sense to poll yourself).
 - **Sub-groups**: dropped for now. Can be reintroduced as member tags/labels without schema changes beyond a `Tag` join table.
+- **RLS on new models**: Supabase auto-exposes every `public` table via PostgREST, and RLS is the only gate. **Any migration that adds a table must also `ALTER TABLE "NewTable" ENABLE ROW LEVEL SECURITY;`** — Prisma won't do it, and the Supabase linter only warns after the table is live. No policies are needed: authorization lives in Express, and Prisma connects as `postgres` (which has `BYPASSRLS`), so RLS-with-no-policies blocks PostgREST without touching the API. See `migrations/20260715140339_enable_rls`.
