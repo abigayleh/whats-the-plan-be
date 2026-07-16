@@ -20,8 +20,7 @@ const serializeList = (list) => ({
   isSystem: list.isSystem,
   icon: list.icon,
   color: list.color,
-  showUnscheduledOnCalendar: list.showUnscheduledOnCalendar,
-  hideScheduledOnCalendar: list.hideScheduledOnCalendar,
+  showOnCalendar: list.showOnCalendar,
   createdAt: list.createdAt,
   taskCount: list._count?.tasks ?? 0,
 });
@@ -129,12 +128,9 @@ router.post('/', async (req, res) => {
   if (groupId && !(await getMembership(req.userId, groupId)))
     return res.status(403).json({ error: 'Not a member of this group' });
   if (!isValidColor(req.body?.color)) return res.status(400).json({ error: 'Invalid color' });
-  const showUnscheduledOnCalendar = req.body?.showUnscheduledOnCalendar;
-  if (showUnscheduledOnCalendar !== undefined && typeof showUnscheduledOnCalendar !== 'boolean')
-    return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
-  const hideScheduledOnCalendar = req.body?.hideScheduledOnCalendar;
-  if (hideScheduledOnCalendar !== undefined && typeof hideScheduledOnCalendar !== 'boolean')
-    return res.status(400).json({ error: 'Invalid hideScheduledOnCalendar' });
+  const showOnCalendar = req.body?.showOnCalendar;
+  if (showOnCalendar !== undefined && typeof showOnCalendar !== 'boolean')
+    return res.status(400).json({ error: 'Invalid showOnCalendar' });
 
   const list = await prisma.list.create({
     data: {
@@ -143,8 +139,7 @@ router.post('/', async (req, res) => {
       groupId,
       icon: req.body?.icon || null,
       color: req.body?.color || null,
-      ...(showUnscheduledOnCalendar !== undefined && { showUnscheduledOnCalendar }),
-      ...(hideScheduledOnCalendar !== undefined && { hideScheduledOnCalendar }),
+      ...(showOnCalendar !== undefined && { showOnCalendar }),
     },
   });
   const payload = serializeList(list);
@@ -166,15 +161,10 @@ router.patch('/:id', async (req, res) => {
     if (!isValidColor(req.body.color)) return res.status(400).json({ error: 'Invalid color' });
     data.color = req.body.color || null;
   }
-  if (req.body.showUnscheduledOnCalendar !== undefined) {
-    if (typeof req.body.showUnscheduledOnCalendar !== 'boolean')
-      return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
-    data.showUnscheduledOnCalendar = req.body.showUnscheduledOnCalendar;
-  }
-  if (req.body.hideScheduledOnCalendar !== undefined) {
-    if (typeof req.body.hideScheduledOnCalendar !== 'boolean')
-      return res.status(400).json({ error: 'Invalid hideScheduledOnCalendar' });
-    data.hideScheduledOnCalendar = req.body.hideScheduledOnCalendar;
+  if (req.body.showOnCalendar !== undefined) {
+    if (typeof req.body.showOnCalendar !== 'boolean')
+      return res.status(400).json({ error: 'Invalid showOnCalendar' });
+    data.showOnCalendar = req.body.showOnCalendar;
   }
 
   const list = await prisma.list.update({ where: { id: req.params.id }, data });
