@@ -24,7 +24,8 @@ const serializeList = (list) => ({
   taskCount: list._count?.tasks ?? 0,
 });
 
-const isValidColor = (value) => value == null || (typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value));
+// Color is a palette key (e.g. "coral"), same convention as GroupMember.color — not a hex string.
+const isValidColor = (value) => value == null || typeof value === 'string';
 
 const serializeTask = (task) => ({
   id: task.id,
