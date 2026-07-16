@@ -9,15 +9,15 @@ datasource db {
 }
 
 model User {
-  id             String                    @id @default(uuid())
-  email          String                    @unique
-  name           String?
-  passwordHash   String
-  memberships    GroupMember[]
-  conversations  ConversationParticipant[]
-  refreshTokens  RefreshToken[]
-  assignedTasks  Task[]                    @relation("TaskAssignee")
-  createdAt      DateTime                  @default(now())
+  id            String                    @id @default(uuid())
+  email         String                    @unique
+  name          String?
+  passwordHash  String
+  memberships   GroupMember[]
+  conversations ConversationParticipant[]
+  refreshTokens RefreshToken[]
+  assignedTasks Task[]                    @relation("TaskAssignee")
+  createdAt     DateTime                  @default(now())
 }
 
 model RefreshToken {
@@ -30,7 +30,7 @@ model RefreshToken {
 }
 
 model Group {
-  id            String          @id @default(uuid())
+  id            String         @id @default(uuid())
   name          String
   members       GroupMember[]
   inviteCodes   InviteCode[]
@@ -39,17 +39,17 @@ model Group {
   polls         Poll[]
   itineraries   Itinerary[]
   conversations Conversation[]
-  createdAt     DateTime        @default(now())
+  createdAt     DateTime       @default(now())
 }
 
 model GroupMember {
-  userId    String
-  groupId   String
-  role      Role     @default(MEMBER)
-  color     String?
-  user      User     @relation(fields: [userId], references: [id])
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  joinedAt  DateTime @default(now())
+  userId   String
+  groupId  String
+  role     Role     @default(MEMBER)
+  color    String?
+  user     User     @relation(fields: [userId], references: [id])
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
 
   @@id([userId, groupId])
 }
@@ -75,7 +75,7 @@ model Event {
   groupId        String?
   group          Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   recurrenceRule Json?
-  subtasks       Json?      // [{ id, title, done }] — always edited as a whole with the event
+  subtasks       Json? // [{ id, title, done }] — always edited as a whole with the event
   itineraryId    String?
   itinerary      Itinerary? @relation(fields: [itineraryId], references: [id], onDelete: SetNull)
   createdAt      DateTime   @default(now())
@@ -97,17 +97,17 @@ model Itinerary {
 }
 
 model List {
-  id             String   @id @default(uuid())
-  name           String
-  ownerId        String
-  groupId        String?
-  group          Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  isSystem       Boolean  @default(false)
-  icon           String?
-  color          String?
-  showOnCalendar Boolean  @default(true)
-  tasks          Task[]
-  createdAt      DateTime @default(now())
+  id                        String   @id @default(uuid())
+  name                      String
+  ownerId                   String
+  groupId                   String?
+  group                     Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  isSystem                  Boolean  @default(false)
+  icon                      String?
+  color                     String?
+  showUnscheduledOnCalendar Boolean  @default(true)
+  tasks                     Task[]
+  createdAt                 DateTime @default(now())
 }
 
 model Task {
@@ -120,8 +120,8 @@ model Task {
   dueDate        DateTime?
   scheduledStart DateTime?
   scheduledEnd   DateTime?
-  recurrenceRule Json?        // { frequency: 'daily'|'weekly'|'monthly'|'yearly', interval: number }
-  subtasks       Json?        // [{ id, title, done }] — always edited as a whole with the task
+  recurrenceRule Json? // { frequency: 'daily'|'weekly'|'monthly'|'yearly', interval: number }
+  subtasks       Json? // [{ id, title, done }] — always edited as a whole with the task
   assignedToId   String?
   assignee       User?        @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdById    String
@@ -130,17 +130,17 @@ model Task {
 }
 
 model Attachment {
-  id         String    @id @default(uuid())
+  id         String   @id @default(uuid())
   filename   String
   storedPath String
   mimeType   String
   sizeBytes  Int
   uploadedBy String
   taskId     String?
-  task       Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task       Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   messageId  String?
-  message    Message?  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  createdAt  DateTime  @default(now())
+  message    Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
 }
 
 model Poll {
@@ -176,13 +176,13 @@ model PollVote {
 }
 
 model Conversation {
-  id           String                     @id @default(uuid())
+  id           String                    @id @default(uuid())
   name         String?
   groupId      String?
-  group        Group?                     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group        Group?                    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   participants ConversationParticipant[]
   messages     Message[]
-  createdAt    DateTime                   @default(now())
+  createdAt    DateTime                  @default(now())
 }
 
 model ConversationParticipant {
