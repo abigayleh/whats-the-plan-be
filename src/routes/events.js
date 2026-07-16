@@ -3,6 +3,7 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { getMembership } = require('../lib/membership');
 const { expandOccurrences, isValidRule } = require('../lib/recurrence');
+const { isValidSubtasks } = require('../lib/subtasks');
 const { emitToGroup, emitToUser } = require('../socket');
 
 const router = express.Router();
@@ -23,6 +24,7 @@ const serialize = (event, occ) => {
     itineraryId: event.itineraryId,
     createdById: event.createdById,
     recurrenceRule: event.recurrenceRule,
+    subtasks: event.subtasks || [],
     startAt,
     endAt,
     isRecurring,
@@ -62,7 +64,7 @@ async function validateItineraryLink(itineraryId, userId, eventGroupId) {
 
 // Validates + creates an event and emits event:created. Returns { event, payload } or { status, error }.
 async function createEventForUser(userId, input) {
-  const { title, description, startAt, endAt, colorLabel, groupId, recurrenceRule, itineraryId } = input;
+  const { title, description, startAt, endAt, colorLabel, groupId, recurrenceRule, itineraryId, subtasks } = input;
   const name = String(title || '').trim();
   if (!name) return { status: 400, error: 'Title required' };
   const sDate = new Date(startAt);
@@ -72,6 +74,8 @@ async function createEventForUser(userId, input) {
   if (eDate < sDate) return { status: 400, error: 'endAt must be after startAt' };
   if (recurrenceRule != null && !isValidRule(recurrenceRule))
     return { status: 400, error: 'Invalid recurrenceRule' };
+  if (subtasks != null && !isValidSubtasks(subtasks))
+    return { status: 400, error: 'Invalid subtasks' };
 
   const gId = groupId || null;
   if (gId && !(await getMembership(userId, gId)))
@@ -91,6 +95,7 @@ async function createEventForUser(userId, input) {
       groupId: gId,
       createdById: userId,
       recurrenceRule: recurrenceRule ?? undefined,
+      subtasks: subtasks !== undefined ? (subtasks ?? []) : undefined,
       itineraryId: itineraryId || null,
     },
   });
@@ -174,6 +179,11 @@ router.patch('/:id', async (req, res) => {
     if (body.recurrenceRule == null) data.recurrenceRule = Prisma.DbNull;
     else if (isValidRule(body.recurrenceRule)) data.recurrenceRule = body.recurrenceRule;
     else return res.status(400).json({ error: 'Invalid recurrenceRule' });
+  }
+  if ('subtasks' in body) {
+    if (body.subtasks == null) data.subtasks = [];
+    else if (!isValidSubtasks(body.subtasks)) return res.status(400).json({ error: 'Invalid subtasks' });
+    else data.subtasks = body.subtasks;
   }
   if ('itineraryId' in body) {
     if (body.itineraryId == null) data.itineraryId = null;
