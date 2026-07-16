@@ -60,4 +60,4 @@ router.get('/me', requireAuth, async (req, res) => {
   return res.json({ user: publicUser(user) });
 });
 
-module.exports = router;
+module.exports = { router, MIN_PASSWORD };
