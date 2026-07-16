@@ -3,7 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
-const authRouter = require('./routes/auth');
+const { router: authRouter } = require('./routes/auth');
+const usersRouter = require('./routes/users');
 const groupsRouter = require('./routes/groups');
 const { router: eventsRouter } = require('./routes/events');
 const { router: listsRouter } = require('./routes/lists');
@@ -24,6 +25,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/users', requireAuth, usersRouter);
 app.use('/api/groups', requireAuth, groupsRouter);
 app.use('/api/events', requireAuth, eventsRouter);
 app.use('/api/lists', requireAuth, listsRouter);
