@@ -96,15 +96,17 @@ model Itinerary {
 }
 
 model List {
-  id          String   @id @default(uuid())
-  name        String
-  ownerId     String
-  groupId     String?
-  group       Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  isSystem    Boolean  @default(false)
-  icon        String?
-  tasks       Task[]
-  createdAt   DateTime @default(now())
+  id                        String   @id @default(uuid())
+  name                      String
+  ownerId                   String
+  groupId                   String?
+  group                     Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  isSystem                  Boolean  @default(false)
+  icon                      String?
+  color                     String?
+  showUnscheduledOnCalendar Boolean  @default(true)
+  tasks                     Task[]
+  createdAt                 DateTime @default(now())
 }
 
 model Task {

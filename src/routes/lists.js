@@ -18,9 +18,13 @@ const serializeList = (list) => ({
   groupId: list.groupId,
   isSystem: list.isSystem,
   icon: list.icon,
+  color: list.color,
+  showUnscheduledOnCalendar: list.showUnscheduledOnCalendar,
   createdAt: list.createdAt,
   taskCount: list._count?.tasks ?? 0,
 });
+
+const isValidColor = (value) => value == null || (typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value));
 
 const serializeTask = (task) => ({
   id: task.id,
@@ -125,9 +129,20 @@ router.post('/', async (req, res) => {
   const groupId = req.body?.groupId || null;
   if (groupId && !(await getMembership(req.userId, groupId)))
     return res.status(403).json({ error: 'Not a member of this group' });
+  if (!isValidColor(req.body?.color)) return res.status(400).json({ error: 'Invalid color' });
+  const showUnscheduledOnCalendar = req.body?.showUnscheduledOnCalendar;
+  if (showUnscheduledOnCalendar !== undefined && typeof showUnscheduledOnCalendar !== 'boolean')
+    return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
 
   const list = await prisma.list.create({
-    data: { name, ownerId: req.userId, groupId, icon: req.body?.icon || null },
+    data: {
+      name,
+      ownerId: req.userId,
+      groupId,
+      icon: req.body?.icon || null,
+      color: req.body?.color || null,
+      ...(showUnscheduledOnCalendar !== undefined && { showUnscheduledOnCalendar }),
+    },
   });
   const payload = serializeList(list);
   emitScoped(list, 'list:created', payload);
@@ -144,6 +159,15 @@ router.patch('/:id', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'List name required' });
   const data = { name };
   if (req.body.icon !== undefined) data.icon = req.body.icon || null;
+  if (req.body.color !== undefined) {
+    if (!isValidColor(req.body.color)) return res.status(400).json({ error: 'Invalid color' });
+    data.color = req.body.color || null;
+  }
+  if (req.body.showUnscheduledOnCalendar !== undefined) {
+    if (typeof req.body.showUnscheduledOnCalendar !== 'boolean')
+      return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
+    data.showUnscheduledOnCalendar = req.body.showUnscheduledOnCalendar;
+  }
 
   const list = await prisma.list.update({ where: { id: req.params.id }, data });
   const payload = serializeList(list);
