@@ -20,6 +20,7 @@ const serializeList = (list) => ({
   icon: list.icon,
   color: list.color,
   showUnscheduledOnCalendar: list.showUnscheduledOnCalendar,
+  hideScheduledOnCalendar: list.hideScheduledOnCalendar,
   createdAt: list.createdAt,
   taskCount: list._count?.tasks ?? 0,
 });
@@ -134,6 +135,9 @@ router.post('/', async (req, res) => {
   const showUnscheduledOnCalendar = req.body?.showUnscheduledOnCalendar;
   if (showUnscheduledOnCalendar !== undefined && typeof showUnscheduledOnCalendar !== 'boolean')
     return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
+  const hideScheduledOnCalendar = req.body?.hideScheduledOnCalendar;
+  if (hideScheduledOnCalendar !== undefined && typeof hideScheduledOnCalendar !== 'boolean')
+    return res.status(400).json({ error: 'Invalid hideScheduledOnCalendar' });
 
   const list = await prisma.list.create({
     data: {
@@ -143,6 +147,7 @@ router.post('/', async (req, res) => {
       icon: req.body?.icon || null,
       color: req.body?.color || null,
       ...(showUnscheduledOnCalendar !== undefined && { showUnscheduledOnCalendar }),
+      ...(hideScheduledOnCalendar !== undefined && { hideScheduledOnCalendar }),
     },
   });
   const payload = serializeList(list);
@@ -168,6 +173,11 @@ router.patch('/:id', async (req, res) => {
     if (typeof req.body.showUnscheduledOnCalendar !== 'boolean')
       return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
     data.showUnscheduledOnCalendar = req.body.showUnscheduledOnCalendar;
+  }
+  if (req.body.hideScheduledOnCalendar !== undefined) {
+    if (typeof req.body.hideScheduledOnCalendar !== 'boolean')
+      return res.status(400).json({ error: 'Invalid hideScheduledOnCalendar' });
+    data.hideScheduledOnCalendar = req.body.hideScheduledOnCalendar;
   }
 
   const list = await prisma.list.update({ where: { id: req.params.id }, data });

@@ -105,6 +105,7 @@ model List {
   icon                      String?
   color                     String?
   showUnscheduledOnCalendar Boolean  @default(true)
+  hideScheduledOnCalendar   Boolean  @default(false)
   tasks                     Task[]
   createdAt                 DateTime @default(now())
 }
