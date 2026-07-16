@@ -21,7 +21,12 @@ router.post('/register', async (req, res) => {
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({ data: { email, name, passwordHash } });
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({ data: { email, name, passwordHash } });
+      // Every user starts with a personal to-do list; no socket emit needed, nobody's connected yet.
+      await tx.list.create({ data: { name: 'My to dos', ownerId: created.id, groupId: null } });
+      return created;
+    });
     const tokens = await issueTokens(user.id);
     return res.status(201).json({ user: publicUser(user), ...tokens });
   } catch (err) {
