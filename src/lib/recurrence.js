@@ -3,10 +3,16 @@ const MAX_OCCURRENCES = 1000; // safety cap per event
 
 const FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'];
 
-// Validates a recurrenceRule; returns true only for a well-formed rule.
+// Validates a recurrenceRule; returns true only for a well-formed rule. daysOfWeek is optional
+// (weekly/bi-weekly day-of-week picker) — when present it must be a non-empty array of 0-6 ints.
 function isValidRule(rule) {
   if (!rule || typeof rule !== 'object') return false;
-  return FREQUENCIES.includes(rule.frequency) && Number.isInteger(rule.interval) && rule.interval >= 1;
+  if (!FREQUENCIES.includes(rule.frequency) || !Number.isInteger(rule.interval) || rule.interval < 1) return false;
+  if (rule.daysOfWeek !== undefined) {
+    if (!Array.isArray(rule.daysOfWeek) || rule.daysOfWeek.length === 0) return false;
+    if (!rule.daysOfWeek.every((d) => Number.isInteger(d) && d >= 0 && d <= 6)) return false;
+  }
+  return true;
 }
 
 const addMonths = (date, n) => {
@@ -20,13 +26,34 @@ const addYears = (date, n) => {
   return d;
 };
 
-// Occurrence at step index i, measured from the event's original start.
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Sunday-anchored week start — mirrors the frontend's date.js startOfWeek, so weekly/bi-weekly
+// expansion (see weeklyOccurrencesInBlock below) matches identically between client and server.
+function startOfWeek(date) {
+  const d = startOfDay(date);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+// Same calendar day as `dayStart` (midnight), but at the original event's time-of-day.
+function atOriginalTime(dayStart, start) {
+  const d = new Date(dayStart);
+  d.setHours(start.getHours(), start.getMinutes(), start.getSeconds(), start.getMilliseconds());
+  return d;
+}
+
+// Occurrence at step index i, measured from the event's original start. Weekly isn't handled
+// here — a weekly rule can produce more than one occurrence per step (one per selected weekday),
+// so it's expanded separately by weeklyOccurrencesInBlock/firstWeeklyBlockIndex below.
 function occurrenceAt(start, rule, i) {
   switch (rule.frequency) {
     case 'daily':
       return new Date(start.getTime() + i * rule.interval * DAY_MS);
-    case 'weekly':
-      return new Date(start.getTime() + i * rule.interval * 7 * DAY_MS);
     case 'monthly':
       return addMonths(start, i * rule.interval);
     case 'yearly':
@@ -39,10 +66,46 @@ function firstIndex(start, rule, windowStart) {
   if (windowStart <= start) return 0;
   const elapsed = windowStart.getTime() - start.getTime();
   if (rule.frequency === 'daily') return Math.floor(elapsed / (rule.interval * DAY_MS));
-  if (rule.frequency === 'weekly') return Math.floor(elapsed / (rule.interval * 7 * DAY_MS));
   const months = (windowStart.getFullYear() - start.getFullYear()) * 12 + (windowStart.getMonth() - start.getMonth());
   const unit = rule.frequency === 'monthly' ? rule.interval : rule.interval * 12;
   return Math.max(0, Math.floor(months / unit) - 1);
+}
+
+// All occurrences of a weekly/bi-weekly rule that fall in week-block `blockIndex`, where block 0
+// is the event's own week and each block spans `rule.interval` weeks. No daysOfWeek (incl. every
+// rule saved before this feature existed) falls back to "just the start date's own weekday" —
+// the same single-occurrence-per-week behavior this rule had before.
+function weeklyOccurrencesInBlock(start, rule, blockIndex) {
+  const anchorWeek = startOfWeek(start);
+  const blockWeekStart = new Date(anchorWeek.getTime() + blockIndex * rule.interval * 7 * DAY_MS);
+  const daysOfWeek = rule.daysOfWeek?.length ? rule.daysOfWeek : [start.getDay()];
+  return [...daysOfWeek]
+    .sort((a, b) => a - b)
+    .map((dow) => atOriginalTime(new Date(blockWeekStart.getTime() + dow * DAY_MS), start))
+    .filter((d) => d >= start); // never emit an occurrence before the event's own start
+}
+
+// Nearest week-block index at/before windowStart, so we don't walk from the origin.
+function firstWeeklyBlockIndex(start, rule, windowStart) {
+  if (windowStart <= start) return 0;
+  const weeksBetween = Math.round((startOfWeek(windowStart) - startOfWeek(start)) / (7 * DAY_MS));
+  return Math.max(0, Math.floor(weeksBetween / rule.interval));
+}
+
+function expandWeekly(start, rule, duration, windowStart, windowEnd) {
+  const occurrences = [];
+  for (let block = firstWeeklyBlockIndex(start, rule, windowStart), n = 0; n < MAX_OCCURRENCES; block++) {
+    const blockOccurrences = weeklyOccurrencesInBlock(start, rule, block);
+    if (blockOccurrences.length && blockOccurrences[0] > windowEnd) break;
+    for (const occStart of blockOccurrences) {
+      if (occStart > windowEnd) continue;
+      const occEnd = new Date(occStart.getTime() + duration);
+      if (occEnd >= windowStart) occurrences.push({ startAt: occStart, endAt: occEnd });
+      n++;
+      if (n >= MAX_OCCURRENCES) break;
+    }
+  }
+  return occurrences;
 }
 
 // Expands a recurring event into occurrences overlapping [windowStart, windowEnd].
@@ -56,6 +119,8 @@ function expandOccurrences(event, windowStart, windowEnd) {
     const end = new Date(event.endAt);
     return start <= windowEnd && end >= windowStart ? [{ startAt: start, endAt: end }] : [];
   }
+
+  if (rule.frequency === 'weekly') return expandWeekly(start, rule, duration, windowStart, windowEnd);
 
   const occurrences = [];
   for (let i = firstIndex(start, rule, windowStart), n = 0; n < MAX_OCCURRENCES; i++, n++) {
