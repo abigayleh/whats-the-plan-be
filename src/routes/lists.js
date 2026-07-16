@@ -4,6 +4,7 @@ const { getMembership } = require('../lib/membership');
 const { loadListAccess, loadEditableTask, isValidAssignee } = require('../lib/listAccess');
 const { serializeAttachment, publicUser } = require('../lib/serializers');
 const { isValidRule } = require('../lib/recurrence');
+const { isValidSubtasks } = require('../lib/subtasks');
 const { emitToGroup, emitToUser } = require('../socket');
 
 const router = express.Router();
@@ -41,10 +42,6 @@ const serializeTask = (task) => ({
 });
 
 const taskInclude = { attachments: true, assignee: true };
-
-const isValidSubtasks = (value) => Array.isArray(value) && value.every((s) => (
-  s && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.done === 'boolean'
-));
 
 // Validates the fields present in body. `partial` skips required checks (PATCH).
 function buildTaskData(body, { partial }) {

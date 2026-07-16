@@ -75,6 +75,7 @@ model Event {
   groupId        String?
   group          Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   recurrenceRule Json?
+  subtasks       Json?      // [{ id, title, done }] — always edited as a whole with the event
   itineraryId    String?
   itinerary      Itinerary? @relation(fields: [itineraryId], references: [id], onDelete: SetNull)
   createdAt      DateTime   @default(now())
