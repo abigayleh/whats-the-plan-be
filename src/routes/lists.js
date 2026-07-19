@@ -18,6 +18,7 @@ const serializeList = (list) => ({
   ownerId: list.ownerId,
   groupId: list.groupId,
   isSystem: list.isSystem,
+  isDefault: list.isDefault,
   icon: list.icon,
   color: list.color,
   showUnscheduledOnCalendar: list.showUnscheduledOnCalendar,
@@ -99,6 +100,18 @@ function validateSchedule(task) {
 const emitScoped = (list, type, payload) =>
   list.groupId ? emitToGroup(list.groupId, type, payload) : emitToUser(list.ownerId, type, payload);
 
+// Only one list can be the default per space (a group, or an owner's private lists).
+// Clears the flag on every other list in the same space so setting a new default is exclusive.
+const clearOtherDefaults = (tx, list) =>
+  tx.list.updateMany({
+    where: {
+      id: { not: list.id },
+      isDefault: true,
+      ...(list.groupId ? { groupId: list.groupId } : { groupId: null, ownerId: list.ownerId }),
+    },
+    data: { isDefault: false },
+  });
+
 // --- Lists ---
 
 router.get('/', async (req, res) => {
@@ -131,17 +144,27 @@ router.post('/', async (req, res) => {
   const showUnscheduledOnCalendar = req.body?.showUnscheduledOnCalendar;
   if (showUnscheduledOnCalendar !== undefined && typeof showUnscheduledOnCalendar !== 'boolean')
     return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
+  const isDefault = req.body?.isDefault === true;
+  if (req.body?.isDefault !== undefined && typeof req.body.isDefault !== 'boolean')
+    return res.status(400).json({ error: 'Invalid isDefault' });
 
-  const list = await prisma.list.create({
-    data: {
-      name,
-      ownerId: req.userId,
-      groupId,
-      icon: req.body?.icon || null,
-      color: req.body?.color || null,
-      ...(showUnscheduledOnCalendar !== undefined && { showUnscheduledOnCalendar }),
-    },
-  });
+  const data = {
+    name,
+    ownerId: req.userId,
+    groupId,
+    isDefault,
+    icon: req.body?.icon || null,
+    color: req.body?.color || null,
+    ...(showUnscheduledOnCalendar !== undefined && { showUnscheduledOnCalendar }),
+  };
+  // A new default demotes the old one in the same space — do both writes atomically.
+  const list = isDefault
+    ? await prisma.$transaction(async (tx) => {
+      const created = await tx.list.create({ data });
+      await clearOtherDefaults(tx, created);
+      return created;
+    })
+    : await prisma.list.create({ data });
   const payload = serializeList(list);
   emitScoped(list, 'list:created', payload);
   res.status(201).json(payload);
@@ -166,8 +189,20 @@ router.patch('/:id', async (req, res) => {
       return res.status(400).json({ error: 'Invalid showUnscheduledOnCalendar' });
     data.showUnscheduledOnCalendar = req.body.showUnscheduledOnCalendar;
   }
+  if (req.body.isDefault !== undefined) {
+    if (typeof req.body.isDefault !== 'boolean')
+      return res.status(400).json({ error: 'Invalid isDefault' });
+    data.isDefault = req.body.isDefault;
+  }
 
-  const list = await prisma.list.update({ where: { id: req.params.id }, data });
+  // Promoting this list to default demotes the old one in the same space — one atomic write.
+  const list = data.isDefault === true
+    ? await prisma.$transaction(async (tx) => {
+      const updated = await tx.list.update({ where: { id: req.params.id }, data });
+      await clearOtherDefaults(tx, updated);
+      return updated;
+    })
+    : await prisma.list.update({ where: { id: req.params.id }, data });
   const payload = serializeList(list);
   emitScoped(list, 'list:updated', payload);
   res.json(payload);

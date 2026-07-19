@@ -104,6 +104,7 @@ model List {
   groupId                   String?
   group                     Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   isSystem                  Boolean  @default(false)
+  isDefault                 Boolean  @default(false)
   icon                      String?
   color                     String?
   showUnscheduledOnCalendar Boolean  @default(true)
