@@ -39,6 +39,7 @@ const serializeTask = (task) => ({
   scheduledStart: task.scheduledStart,
   scheduledEnd: task.scheduledEnd,
   recurrenceRule: task.recurrenceRule,
+  completedDates: task.completedDates || [],
   subtasks: task.subtasks || [],
   assignedToId: task.assignedToId,
   assignee: task.assignee ? publicUser(task.assignee) : null,
@@ -265,6 +266,23 @@ router.patch('/:listId/tasks/:id', async (req, res) => {
   if (result.error) return res.status(result.status).json({ error: result.error });
 
   const body = req.body || {};
+
+  // Per-day completion for a recurring series: toggle one occurrence's date in completedDates,
+  // leaving the series (and its scalar status) untouched so it keeps recurring.
+  if (body.occurrenceDate !== undefined) {
+    const date = new Date(body.occurrenceDate);
+    if (isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid occurrenceDate' });
+    const iso = date.toISOString();
+    const current = result.task.completedDates || [];
+    const next = current.includes(iso) ? current.filter((d) => d !== iso) : [...current, iso];
+    const task = await prisma.task.update({
+      where: { id: req.params.id }, data: { completedDates: next }, include: taskInclude,
+    });
+    const payload = serializeTask(task);
+    emitScoped(result.list, 'task:updated', payload);
+    return res.json(payload);
+  }
+
   const built = buildTaskData(body, { partial: true });
   if (built.error) return res.status(400).json({ error: built.error });
   const { data } = built;

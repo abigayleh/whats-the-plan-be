@@ -124,6 +124,7 @@ model Task {
   scheduledStart DateTime?
   scheduledEnd   DateTime?
   recurrenceRule Json? // { frequency: 'daily'|'weekly'|'monthly'|'yearly', interval: number }
+  completedDates Json? // recurring only: ISO timestamps of occurrences marked done per-day
   subtasks       Json? // [{ id, title, done }] — always edited as a whole with the task
   assignedToId   String?
   assignee       User?        @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)

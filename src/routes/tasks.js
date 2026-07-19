@@ -26,8 +26,13 @@ function expandTask(task, windowStart, windowEnd) {
   const shim = { startAt: start, endAt: task.scheduledEnd || start, recurrenceRule: task.recurrenceRule };
   const isRecurring = isValidRule(task.recurrenceRule);
 
+  const base = serializeTask(task);
+  const completed = new Set(base.completedDates);
+
   return expandOccurrences(shim, windowStart, windowEnd).map((occ) => ({
-    ...serializeTask(task),
+    ...base,
+    // A recurring series never completes as a whole — each day's done state is per-occurrence.
+    ...(isRecurring && { status: completed.has(occ.startAt.toISOString()) ? 'DONE' : 'TODO' }),
     groupId: task.list.groupId,
     isRecurring,
     instanceId: isRecurring ? `${task.id}@${occ.startAt.toISOString()}` : task.id,
