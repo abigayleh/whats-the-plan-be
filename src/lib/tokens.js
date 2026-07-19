@@ -4,12 +4,24 @@ const prisma = require('./prisma');
 
 const ACCESS_TTL = '15m';
 const REFRESH_TTL_DAYS = 7;
+const VERIFY_TTL = '24h';
 
 const signAccessToken = (userId) =>
   jwt.sign({ sub: userId }, process.env.JWT_ACCESS_SECRET, { expiresIn: ACCESS_TTL });
 
 const verifyAccessToken = (token) =>
   jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+
+// Email-verification link token: a short-lived JWT (no DB row), scoped by a purpose claim so
+// an access token can't be swapped in for it and vice versa.
+const signVerifyToken = (userId) =>
+  jwt.sign({ sub: userId, purpose: 'verify' }, process.env.JWT_ACCESS_SECRET, { expiresIn: VERIFY_TTL });
+
+const verifyVerifyToken = (token) => {
+  const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+  if (payload.purpose !== 'verify') throw new Error('Not a verification token');
+  return payload;
+};
 
 const hashToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
 
@@ -42,6 +54,8 @@ async function revokeRefreshToken(raw) {
 
 module.exports = {
   verifyAccessToken,
+  signVerifyToken,
+  verifyVerifyToken,
   issueTokens,
   rotateRefreshToken,
   revokeRefreshToken,

@@ -13,6 +13,7 @@ model User {
   email         String                    @unique
   name          String?
   passwordHash  String
+  emailVerified Boolean                   @default(false)
   memberships   GroupMember[]
   conversations ConversationParticipant[]
   refreshTokens RefreshToken[]
