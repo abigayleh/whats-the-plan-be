@@ -6,7 +6,7 @@ const { emitToGroup, emitToUser } = require('../socket');
 
 const router = express.Router();
 
-// List responses omit `content` to keep the tree light; `hasContent` flags an empty doc.
+// List responses omit `content` to keep the tree light; the editor fetches it per-page.
 const serializeMeta = (page) => ({
   id: page.id,
   title: page.title,
@@ -17,7 +17,6 @@ const serializeMeta = (page) => ({
   parentId: page.parentId,
   createdAt: page.createdAt,
   updatedAt: page.updatedAt,
-  hasContent: page.content != null,
 });
 
 const serializePage = (page) => ({ ...serializeMeta(page), content: page.content });
@@ -26,10 +25,10 @@ const serializePage = (page) => ({ ...serializeMeta(page), content: page.content
 const emitScoped = (page, type, payload) =>
   page.groupId ? emitToGroup(page.groupId, type, payload) : emitToUser(page.ownerId, type, payload);
 
-// serializeMeta reads page.content for hasContent, so callers that need it accurate select content too.
+// Metadata only — the tree endpoint never pulls the (potentially large) content JSON.
 const metaSelect = {
   id: true, title: true, icon: true, ownerId: true, createdById: true,
-  groupId: true, parentId: true, createdAt: true, updatedAt: true, content: true,
+  groupId: true, parentId: true, createdAt: true, updatedAt: true,
 };
 
 // Validates title/icon/content present in body. `partial` skips required checks (PATCH).
