@@ -13,6 +13,7 @@ const attachmentsRouter = require('./routes/attachments');
 const filesRouter = require('./routes/files');
 const { pollsRouter, groupPollsRouter } = require('./routes/polls');
 const itinerariesRouter = require('./routes/itineraries');
+const { router: pagesRouter } = require('./routes/pages');
 const requireAuth = require('./middleware/requireAuth');
 const { initSocket } = require('./socket');
 
@@ -35,6 +36,7 @@ app.use('/api/files', requireAuth, filesRouter);
 app.use('/api/groups/:groupId/polls', requireAuth, groupPollsRouter);
 app.use('/api/polls', requireAuth, pollsRouter);
 app.use('/api/itineraries', requireAuth, itinerariesRouter);
+app.use('/api/pages', requireAuth, pagesRouter);
 
 // JSON error handler — keeps unexpected errors from leaking stack traces.
 app.use((err, _req, res, _next) => {

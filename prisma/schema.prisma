@@ -39,6 +39,7 @@ model Group {
   polls         Poll[]
   itineraries   Itinerary[]
   conversations Conversation[]
+  pages         Page[]
   createdAt     DateTime       @default(now())
 }
 
@@ -203,6 +204,22 @@ model Message {
   embed          Json?
   attachments    Attachment[]
   createdAt      DateTime     @default(now())
+}
+
+model Page {
+  id          String   @id @default(uuid())
+  title       String   @default("Untitled")
+  icon        String? // emoji or icon key
+  content     Json? // TipTap/ProseMirror document JSON
+  ownerId     String
+  createdById String
+  groupId     String?
+  group       Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Page?    @relation("PageTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children    Page[]   @relation("PageTree")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt // Page-only: drives recently-edited sorting
 }
 
 enum Role {
