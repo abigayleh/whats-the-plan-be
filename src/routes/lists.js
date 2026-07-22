@@ -24,10 +24,8 @@ const serializeList = (list) => ({
   showUnscheduledOnCalendar: list.showUnscheduledOnCalendar,
   createdAt: list.createdAt,
   taskCount: list._count?.tasks ?? 0,
-  // Per-user arrangement; null when this user hasn't placed the list yet.
-  // folderId null means top level.
+  // Per-user arrangement position; null when this user hasn't placed the list yet.
   position: list.placements?.[0]?.position ?? null,
-  folderId: list.placements?.[0]?.folderId ?? null,
 });
 
 // Color is a palette key (e.g. "coral"), same convention as GroupMember.color — not a hex string.
@@ -144,24 +142,14 @@ router.get('/', async (req, res) => {
   res.json(lists.map(serializeList));
 });
 
-// Persist this user's list arrangement. Body:
-//   { lists: [{ listId, folderId?, position }], folders?: [{ id, position }] }
-// Personal overlay — only affects the caller, so we emit to their room alone. Last
-// write wins. folderId is kept only when it names a folder this user owns.
+// Persist this user's list order. Body: { lists: [{ listId, position }] }. Personal
+// overlay — only affects the caller, so we emit to their room alone. Last write wins.
 router.put('/arrangement', async (req, res) => {
   const items = req.body?.lists;
-  const folderOrder = req.body?.folders ?? [];
   if (!Array.isArray(items)) return res.status(400).json({ error: 'lists array required' });
-  if (!Array.isArray(folderOrder)) return res.status(400).json({ error: 'folders must be an array' });
   for (const it of items) {
     if (typeof it?.listId !== 'string' || !Number.isInteger(it?.position))
-      return res.status(400).json({ error: 'Each list needs listId and integer position' });
-    if (it.folderId != null && typeof it.folderId !== 'string')
-      return res.status(400).json({ error: 'Invalid folderId' });
-  }
-  for (const f of folderOrder) {
-    if (typeof f?.id !== 'string' || !Number.isInteger(f?.position))
-      return res.status(400).json({ error: 'Each folder needs id and integer position' });
+      return res.status(400).json({ error: 'Each item needs listId and integer position' });
   }
 
   const memberGroupIds = (
@@ -175,34 +163,16 @@ router.put('/arrangement', async (req, res) => {
     select: { id: true },
   });
   const visibleIds = new Set(visible.map((l) => l.id));
-  // Folders are personal, so a folderId is honored only if the caller owns it.
-  const ownedFolderIds = new Set((
-    await prisma.folder.findMany({ where: { ownerId: req.userId }, select: { id: true } })
-  ).map((f) => f.id));
+  const valid = items.filter((i) => visibleIds.has(i.listId));
 
-  const validLists = items.filter((i) => visibleIds.has(i.listId));
-  const validFolders = folderOrder.filter((f) => ownedFolderIds.has(f.id));
+  await prisma.$transaction(valid.map((i) =>
+    prisma.listPlacement.upsert({
+      where: { userId_listId: { userId: req.userId, listId: i.listId } },
+      create: { userId: req.userId, listId: i.listId, position: i.position },
+      update: { position: i.position },
+    })));
 
-  await prisma.$transaction([
-    ...validLists.map((i) => {
-      const folderId = i.folderId && ownedFolderIds.has(i.folderId) ? i.folderId : null;
-      return prisma.listPlacement.upsert({
-        where: { userId_listId: { userId: req.userId, listId: i.listId } },
-        create: {
-          userId: req.userId, listId: i.listId, folderId, position: i.position,
-        },
-        update: { folderId, position: i.position },
-      });
-    }),
-    ...validFolders.map((f) => prisma.folder.update({ where: { id: f.id }, data: { position: f.position } })),
-  ]);
-
-  emitToUser(req.userId, 'lists:arranged', {
-    lists: validLists.map((i) => ({
-      id: i.listId, folderId: i.folderId && ownedFolderIds.has(i.folderId) ? i.folderId : null, position: i.position,
-    })),
-    folders: validFolders,
-  });
+  emitToUser(req.userId, 'lists:arranged', { lists: valid.map((i) => ({ id: i.listId, position: i.position })) });
   res.json({ ok: true });
 });
 
