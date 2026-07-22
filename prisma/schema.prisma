@@ -91,6 +91,7 @@ model Itinerary {
   startDate   DateTime
   endDate     DateTime
   colorLabel  String?
+  icon        String? // icon key from the shared content-icon set (same as Pages)
   completedAt DateTime? // null = active; set = shown in the sidebar's Completed group
   createdById String
   groupId     String?
@@ -143,6 +144,7 @@ model Task {
   recurrenceRule Json? // { frequency: 'daily'|'weekly'|'monthly'|'yearly', interval: number }
   completedDates Json? // recurring only: ISO timestamps of occurrences marked done per-day
   subtasks       Json? // [{ id, title, done }] — always edited as a whole with the task
+  location       Json? // { label, lat, lng } — a to-do's place, pinned on the itinerary map
   assignedToId   String?
   assignee       User?        @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdById    String

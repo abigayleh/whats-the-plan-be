@@ -48,11 +48,19 @@ const serializeTask = (task) => ({
   createdById: task.createdById,
   createdAt: task.createdAt,
   attachments: (task.attachments || []).map(serializeAttachment),
+  location: task.location ?? null,
   // Surfaced when the task's list is included; null everywhere else (non-itinerary tasks).
   itineraryId: task.list?.itineraryId ?? null,
 });
 
 const taskInclude = { attachments: true, assignee: true };
+
+// A place pinned on the itinerary map: null, or { label, lat, lng } with numeric coordinates.
+const isValidLocation = (value) => value == null
+  || (typeof value === 'object'
+    && typeof value.label === 'string'
+    && typeof value.lat === 'number'
+    && typeof value.lng === 'number');
 
 // Validates the fields present in body. `partial` skips required checks (PATCH).
 function buildTaskData(body, { partial }) {
@@ -86,6 +94,10 @@ function buildTaskData(body, { partial }) {
     if (body.subtasks == null) data.subtasks = [];
     else if (!isValidSubtasks(body.subtasks)) return { error: 'Invalid subtasks' };
     else data.subtasks = body.subtasks;
+  }
+  if (body.location !== undefined) {
+    if (!isValidLocation(body.location)) return { error: 'Invalid location' };
+    data.location = body.location || null;
   }
   return { data };
 }

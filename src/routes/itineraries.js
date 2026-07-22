@@ -16,6 +16,7 @@ const serializeItinerary = (it) => ({
   startDate: it.startDate,
   endDate: it.endDate,
   colorLabel: it.colorLabel,
+  icon: it.icon ?? null,
   completedAt: it.completedAt ?? null,
   groupId: it.groupId,
   createdById: it.createdById,
@@ -68,7 +69,7 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { title, destination, description, startDate, endDate, colorLabel, groupId } = req.body || {};
+  const { title, destination, description, startDate, endDate, colorLabel, icon, groupId } = req.body || {};
   const name = String(title || '').trim();
   if (!name) return res.status(400).json({ error: 'Title required' });
   const sDate = new Date(startDate);
@@ -90,6 +91,7 @@ router.post('/', async (req, res) => {
         startDate: sDate,
         endDate: eDate,
         colorLabel: colorLabel || null,
+        icon: icon || null,
         groupId: gId,
         createdById: req.userId,
       },
@@ -128,6 +130,7 @@ router.patch('/:id', async (req, res) => {
   if (body.destination !== undefined) data.destination = body.destination || null;
   if (body.description !== undefined) data.description = body.description || null;
   if (body.colorLabel !== undefined) data.colorLabel = body.colorLabel || null;
+  if (body.icon !== undefined) data.icon = body.icon || null;
   if (body.startDate !== undefined) data.startDate = newStart;
   if (body.endDate !== undefined) data.endDate = newEnd;
   if (body.completedAt !== undefined) {
