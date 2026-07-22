@@ -24,6 +24,8 @@ const serializeList = (list) => ({
   showUnscheduledOnCalendar: list.showUnscheduledOnCalendar,
   createdAt: list.createdAt,
   taskCount: list._count?.tasks ?? 0,
+  // Per-user arrangement position; null when this user hasn't placed the list yet.
+  position: list.placements?.[0]?.position ?? null,
 });
 
 // Color is a palette key (e.g. "coral"), same convention as GroupMember.color — not a hex string.
@@ -131,8 +133,45 @@ router.get('/', async (req, res) => {
     where = { OR: [{ groupId: null, ownerId: req.userId }, { groupId: { in: memberGroupIds } }] };
   }
 
-  const lists = await prisma.list.findMany({ where, include: { _count: { select: { tasks: true } } } });
+  const lists = await prisma.list.findMany({
+    where,
+    include: { _count: { select: { tasks: true } }, placements: { where: { userId: req.userId } } },
+  });
   res.json(lists.map(serializeList));
+});
+
+// Persist this user's list order. Body: { lists: [{ listId, position }] }. Personal
+// overlay — only affects the caller, so we emit to their room alone. Last write wins.
+router.put('/arrangement', async (req, res) => {
+  const items = req.body?.lists;
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'lists array required' });
+  for (const it of items) {
+    if (typeof it?.listId !== 'string' || !Number.isInteger(it?.position))
+      return res.status(400).json({ error: 'Each item needs listId and integer position' });
+  }
+
+  const memberGroupIds = (
+    await prisma.groupMember.findMany({ where: { userId: req.userId }, select: { groupId: true } })
+  ).map((m) => m.groupId);
+  const visible = await prisma.list.findMany({
+    where: {
+      id: { in: items.map((i) => i.listId) },
+      OR: [{ groupId: null, ownerId: req.userId }, { groupId: { in: memberGroupIds } }],
+    },
+    select: { id: true },
+  });
+  const visibleIds = new Set(visible.map((l) => l.id));
+  const valid = items.filter((i) => visibleIds.has(i.listId));
+
+  await prisma.$transaction(valid.map((i) =>
+    prisma.listPlacement.upsert({
+      where: { userId_listId: { userId: req.userId, listId: i.listId } },
+      create: { userId: req.userId, listId: i.listId, position: i.position },
+      update: { position: i.position },
+    })));
+
+  emitToUser(req.userId, 'lists:arranged', { lists: valid.map((i) => ({ id: i.listId, position: i.position })) });
+  res.json({ ok: true });
 });
 
 router.post('/', async (req, res) => {

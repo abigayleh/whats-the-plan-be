@@ -110,7 +110,20 @@ model List {
   color                     String?
   showUnscheduledOnCalendar Boolean  @default(true)
   tasks                     Task[]
+  placements                ListPlacement[]
   createdAt                 DateTime @default(now())
+}
+
+// Per-user ordering overlay for the Lists page. A row exists once a user has
+// arranged a list; unplaced lists render at the end by createdAt.
+model ListPlacement {
+  userId    String
+  listId    String
+  list      List     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@id([userId, listId])
 }
 
 model Task {
