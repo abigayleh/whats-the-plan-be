@@ -48,6 +48,8 @@ const serializeTask = (task) => ({
   createdById: task.createdById,
   createdAt: task.createdAt,
   attachments: (task.attachments || []).map(serializeAttachment),
+  // Surfaced when the task's list is included; null everywhere else (non-itinerary tasks).
+  itineraryId: task.list?.itineraryId ?? null,
 });
 
 const taskInclude = { attachments: true, assignee: true };

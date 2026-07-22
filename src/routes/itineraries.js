@@ -1,8 +1,10 @@
 const express = require('express');
+const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { getMembership } = require('../lib/membership');
 const { emitToGroup, emitToUser } = require('../socket');
 const { serializeEvent, createEventForUser } = require('./events');
+const { expandTask } = require('./tasks');
 
 const router = express.Router();
 
@@ -170,6 +172,37 @@ router.get('/:id/events', async (req, res) => {
     orderBy: { startAt: 'asc' },
   });
   res.json(events.map((e) => serializeEvent(e)));
+});
+
+// Expanded to-do occurrences for the itinerary's own week/day views. Mirrors
+// /api/tasks/calendar but scoped to this itinerary's list (which the silo filter hides there).
+router.get('/:id/tasks', async (req, res) => {
+  const access = await loadItineraryAccess(req.params.id, req.userId);
+  if (access.error) return res.status(access.status).json({ error: access.error });
+
+  const { start, end } = req.query;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (!start || !end || isNaN(startDate.getTime()) || isNaN(endDate.getTime()))
+    return res.status(400).json({ error: 'Valid start and end are required' });
+  if (endDate < startDate) return res.status(400).json({ error: 'end must be after start' });
+
+  const listId = access.itinerary.lists?.[0]?.id;
+  if (!listId) return res.json([]);
+
+  const tasks = await prisma.task.findMany({
+    where: {
+      listId,
+      OR: [
+        { dueDate: { gte: startDate, lte: endDate } },
+        { scheduledStart: { gte: startDate, lte: endDate } },
+        { recurrenceRule: { not: Prisma.DbNull } },
+      ],
+    },
+    include: { attachments: true, assignee: true, list: { select: { groupId: true, itineraryId: true } } },
+    orderBy: { dueDate: 'asc' },
+  });
+  res.json(tasks.flatMap((task) => expandTask(task, startDate, endDate)));
 });
 
 router.post('/:id/events', async (req, res) => {

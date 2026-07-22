@@ -80,3 +80,5 @@ router.get('/calendar', async (req, res) => {
 });
 
 module.exports = router;
+// Shared with the itineraries router, which expands its own scoped task query the same way.
+module.exports.expandTask = expandTask;
