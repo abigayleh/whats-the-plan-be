@@ -9,7 +9,9 @@ const router = express.Router();
 const taskInclude = { attachments: true, assignee: true };
 
 // Lists visible to the user: private ones they own + group lists in their groups.
+// Itinerary-owned lists are excluded — their to-dos are siloed to the itinerary's own views.
 const visibleListFilter = (userId, memberGroupIds) => ({
+  itineraryId: null,
   OR: [{ groupId: null, ownerId: userId }, { groupId: { in: memberGroupIds } }],
 });
 

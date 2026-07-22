@@ -132,6 +132,8 @@ router.get('/', async (req, res) => {
   } else {
     where = { OR: [{ groupId: null, ownerId: req.userId }, { groupId: { in: memberGroupIds } }] };
   }
+  // Itinerary-owned lists are managed inside the itinerary, never in the normal Lists view.
+  where.itineraryId = null;
 
   const lists = await prisma.list.findMany({
     where,

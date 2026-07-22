@@ -84,34 +84,38 @@ model Event {
 }
 
 model Itinerary {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   title       String
   destination String?
   description String?
   startDate   DateTime
   endDate     DateTime
   colorLabel  String?
+  completedAt DateTime? // null = active; set = shown in the sidebar's Completed group
   createdById String
   groupId     String?
-  group       Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group       Group?    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   events      Event[]
-  createdAt   DateTime @default(now())
+  lists       List[] // one auto-created list holds the itinerary's to-dos
+  createdAt   DateTime  @default(now())
 }
 
 model List {
-  id                        String   @id @default(uuid())
+  id                        String     @id @default(uuid())
   name                      String
   ownerId                   String
   groupId                   String?
-  group                     Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  isSystem                  Boolean  @default(false)
-  isDefault                 Boolean  @default(false)
+  group                     Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  itineraryId               String? // set = this list belongs to an itinerary (hidden from the normal Lists view)
+  itinerary                 Itinerary? @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  isSystem                  Boolean    @default(false)
+  isDefault                 Boolean    @default(false)
   icon                      String?
   color                     String?
-  showUnscheduledOnCalendar Boolean  @default(true)
+  showUnscheduledOnCalendar Boolean    @default(true)
   tasks                     Task[]
   placements                ListPlacement[]
-  createdAt                 DateTime @default(now())
+  createdAt                 DateTime        @default(now())
 }
 
 // Per-user ordering overlay for the Lists page. A row exists once a user has

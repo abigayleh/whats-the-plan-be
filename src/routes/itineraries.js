@@ -14,17 +14,22 @@ const serializeItinerary = (it) => ({
   startDate: it.startDate,
   endDate: it.endDate,
   colorLabel: it.colorLabel,
+  completedAt: it.completedAt ?? null,
   groupId: it.groupId,
   createdById: it.createdById,
+  listId: it.lists?.[0]?.id ?? null,
   createdAt: it.createdAt,
 });
+
+// The itinerary's to-dos live in one auto-created list; include just its id for serialization.
+const withList = { lists: { select: { id: true }, take: 1 } };
 
 const emitItinerary = (it, type, payload) =>
   it.groupId ? emitToGroup(it.groupId, type, payload) : emitToUser(it.createdById, type, payload);
 
 // Loads an itinerary the user can view (owner for private, member for group).
 async function loadItineraryAccess(id, userId) {
-  const itinerary = await prisma.itinerary.findUnique({ where: { id } });
+  const itinerary = await prisma.itinerary.findUnique({ where: { id }, include: withList });
   if (!itinerary) return { status: 404, error: 'Itinerary not found' };
   if (itinerary.groupId === null)
     return itinerary.createdById === userId
@@ -52,7 +57,11 @@ router.get('/', async (req, res) => {
     where = { OR: [{ groupId: null, createdById: req.userId }, { groupId: { in: memberGroupIds } }] };
   }
 
-  const itineraries = await prisma.itinerary.findMany({ where, orderBy: { startDate: 'asc' } });
+  const itineraries = await prisma.itinerary.findMany({
+    where,
+    include: withList,
+    orderBy: { startDate: 'asc' },
+  });
   res.json(itineraries.map(serializeItinerary));
 });
 
@@ -69,17 +78,24 @@ router.post('/', async (req, res) => {
   if (gId && !(await getMembership(req.userId, gId)))
     return res.status(403).json({ error: 'Not a member of this group' });
 
-  const itinerary = await prisma.itinerary.create({
-    data: {
-      title: name,
-      destination: destination || null,
-      description: description || null,
-      startDate: sDate,
-      endDate: eDate,
-      colorLabel: colorLabel || null,
-      groupId: gId,
-      createdById: req.userId,
-    },
+  // Create the itinerary and its one to-do list together so the pair can never half-exist.
+  const itinerary = await prisma.$transaction(async (tx) => {
+    const created = await tx.itinerary.create({
+      data: {
+        title: name,
+        destination: destination || null,
+        description: description || null,
+        startDate: sDate,
+        endDate: eDate,
+        colorLabel: colorLabel || null,
+        groupId: gId,
+        createdById: req.userId,
+      },
+    });
+    await tx.list.create({
+      data: { name, ownerId: req.userId, groupId: gId, itineraryId: created.id },
+    });
+    return tx.itinerary.findUnique({ where: { id: created.id }, include: withList });
   });
   const payload = serializeItinerary(itinerary);
   emitItinerary(itinerary, 'itinerary:created', payload);
@@ -112,8 +128,20 @@ router.patch('/:id', async (req, res) => {
   if (body.colorLabel !== undefined) data.colorLabel = body.colorLabel || null;
   if (body.startDate !== undefined) data.startDate = newStart;
   if (body.endDate !== undefined) data.endDate = newEnd;
+  if (body.completedAt !== undefined) {
+    if (body.completedAt === null) data.completedAt = null;
+    else {
+      const completed = new Date(body.completedAt);
+      if (isNaN(completed.getTime())) return res.status(400).json({ error: 'Invalid completedAt' });
+      data.completedAt = completed;
+    }
+  }
 
-  const itinerary = await prisma.itinerary.update({ where: { id: req.params.id }, data });
+  const itinerary = await prisma.itinerary.update({
+    where: { id: req.params.id },
+    data,
+    include: withList,
+  });
   const payload = serializeItinerary(itinerary);
   emitItinerary(itinerary, 'itinerary:updated', payload);
   res.json(payload);
