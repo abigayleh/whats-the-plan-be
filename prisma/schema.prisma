@@ -118,12 +118,26 @@ model List {
   createdAt                 DateTime        @default(now())
 }
 
+// A personal folder for organizing the Lists page. Folders are a per-user overlay
+// (no group scope) and never nest — they hold lists via ListPlacement.folderId.
+model Folder {
+  id         String          @id @default(uuid())
+  name       String
+  ownerId    String
+  position   Int             @default(0)
+  placements ListPlacement[]
+  createdAt  DateTime        @default(now())
+}
+
 // Per-user ordering overlay for the Lists page. A row exists once a user has
-// arranged a list; unplaced lists render at the end by createdAt.
+// arranged a list; unplaced lists render at the end by createdAt. folderId null
+// means top level; it shares one position space with folders at the top level.
 model ListPlacement {
   userId    String
   listId    String
   list      List     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  folderId  String?
+  folder    Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
   position  Int      @default(0)
   createdAt DateTime @default(now())
 
