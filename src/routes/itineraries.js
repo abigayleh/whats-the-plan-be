@@ -5,6 +5,7 @@ const { getMembership } = require('../lib/membership');
 const { emitToGroup, emitToUser } = require('../socket');
 const { serializeEvent, createEventForUser } = require('./events');
 const { expandTask } = require('./tasks');
+const { serializePoll, parsePollInput } = require('./polls');
 
 const router = express.Router();
 
@@ -131,6 +132,7 @@ router.patch('/:id', async (req, res) => {
   if (body.description !== undefined) data.description = body.description || null;
   if (body.colorLabel !== undefined) data.colorLabel = body.colorLabel || null;
   if (body.icon !== undefined) data.icon = body.icon || null;
+  if (body.content !== undefined) data.content = body.content ?? null;
   if (body.startDate !== undefined) data.startDate = newStart;
   if (body.endDate !== undefined) data.endDate = newEnd;
   if (body.completedAt !== undefined) {
@@ -164,7 +166,50 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const access = await loadItineraryAccess(req.params.id, req.userId);
   if (access.error) return res.status(access.status).json({ error: access.error });
-  res.json(serializeItinerary(access.itinerary));
+  // The single-itinerary fetch carries the notes doc; the list omits it to stay light.
+  res.json({ ...serializeItinerary(access.itinerary), content: access.itinerary.content ?? null });
+});
+
+// --- Polls (scoped to the itinerary's group; only for group itineraries) ---
+
+async function loadItineraryForPolls(itineraryId, userId) {
+  const itinerary = await prisma.itinerary.findUnique({ where: { id: itineraryId } });
+  if (!itinerary) return { status: 404, error: 'Itinerary not found' };
+  if (!itinerary.groupId) return { status: 400, error: 'Personal itineraries have no polls' };
+  if (!(await getMembership(userId, itinerary.groupId))) return { status: 404, error: 'Itinerary not found' };
+  return { itinerary };
+}
+
+router.get('/:id/polls', async (req, res) => {
+  const access = await loadItineraryForPolls(req.params.id, req.userId);
+  if (access.error) return res.status(access.status).json({ error: access.error });
+  const polls = await prisma.poll.findMany({
+    where: { itineraryId: req.params.id },
+    include: { options: true, votes: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(polls.map((p) => serializePoll(p, req.userId)));
+});
+
+router.post('/:id/polls', async (req, res) => {
+  const access = await loadItineraryForPolls(req.params.id, req.userId);
+  if (access.error) return res.status(access.status).json({ error: access.error });
+  const parsed = parsePollInput(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+
+  const poll = await prisma.poll.create({
+    data: {
+      question: parsed.question,
+      groupId: access.itinerary.groupId,
+      itineraryId: req.params.id,
+      createdById: req.userId,
+      expiresAt: parsed.expiresAt,
+      options: { create: parsed.options.map((text) => ({ text })) },
+    },
+    include: { options: true, votes: true },
+  });
+  emitToGroup(access.itinerary.groupId, 'poll:created', serializePoll(poll, null));
+  res.status(201).json(serializePoll(poll, req.userId));
 });
 
 router.get('/:id/events', async (req, res) => {

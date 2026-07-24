@@ -92,12 +92,14 @@ model Itinerary {
   endDate     DateTime
   colorLabel  String?
   icon        String? // icon key from the shared content-icon set (same as Pages)
+  content     Json? // TipTap notes doc — one shared planning note per itinerary
   completedAt DateTime? // null = active; set = shown in the sidebar's Completed group
   createdById String
   groupId     String?
   group       Group?    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   events      Event[]
   lists       List[] // one auto-created list holds the itinerary's to-dos
+  polls       Poll[]
   createdAt   DateTime  @default(now())
 }
 
@@ -171,6 +173,8 @@ model Poll {
   question    String
   groupId     String
   group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  itineraryId String? // set = scoped to an itinerary's Polls tab (inherits the itinerary's group)
+  itinerary   Itinerary?   @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
   createdById String
   expiresAt   DateTime?
   options     PollOption[]

@@ -28,6 +28,25 @@ const serializePoll = (poll, userId) => {
   };
 };
 
+// Validates a poll body → { question, options, expiresAt } or { error }. Shared by the
+// group-nested and itinerary-nested create routes.
+function parsePollInput(body) {
+  const question = String(body?.question || '').trim();
+  if (!question) return { error: 'Question required' };
+  const options = (Array.isArray(body?.options) ? body.options : [])
+    .map((o) => String(o || '').trim())
+    .filter(Boolean);
+  if (options.length < 2) return { error: 'At least 2 options required' };
+  if (options.length > MAX_OPTIONS) return { error: `At most ${MAX_OPTIONS} options` };
+  let expiresAt = null;
+  if (body?.expiresAt) {
+    expiresAt = new Date(body.expiresAt);
+    if (isNaN(expiresAt.getTime()) || expiresAt <= new Date())
+      return { error: 'expiresAt must be a valid future date' };
+  }
+  return { question, options, expiresAt };
+}
+
 // Loads a poll the user can access (member of its group), or { status, error }.
 async function loadPollAccess(pollId, userId) {
   const poll = await prisma.poll.findUnique({ where: { id: pollId }, include: pollInclude });
@@ -55,28 +74,16 @@ groupPollsRouter.post('/', async (req, res) => {
   if (!(await getMembership(req.userId, groupId)))
     return res.status(404).json({ error: 'Group not found' });
 
-  const question = String(req.body?.question || '').trim();
-  if (!question) return res.status(400).json({ error: 'Question required' });
-  const options = (Array.isArray(req.body?.options) ? req.body.options : [])
-    .map((o) => String(o || '').trim())
-    .filter(Boolean);
-  if (options.length < 2) return res.status(400).json({ error: 'At least 2 options required' });
-  if (options.length > MAX_OPTIONS) return res.status(400).json({ error: `At most ${MAX_OPTIONS} options` });
-
-  let expiresAt = null;
-  if (req.body?.expiresAt) {
-    expiresAt = new Date(req.body.expiresAt);
-    if (isNaN(expiresAt.getTime()) || expiresAt <= new Date())
-      return res.status(400).json({ error: 'expiresAt must be a valid future date' });
-  }
+  const parsed = parsePollInput(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
 
   const poll = await prisma.poll.create({
     data: {
-      question,
+      question: parsed.question,
       groupId,
       createdById: req.userId,
-      expiresAt,
-      options: { create: options.map((text) => ({ text })) },
+      expiresAt: parsed.expiresAt,
+      options: { create: parsed.options.map((text) => ({ text })) },
     },
     include: pollInclude,
   });
@@ -123,4 +130,6 @@ pollsRouter.post('/:id/vote', async (req, res) => {
   res.json(serializePoll(updated, req.userId));
 });
 
-module.exports = { pollsRouter, groupPollsRouter };
+module.exports = {
+  pollsRouter, groupPollsRouter, serializePoll, parsePollInput,
+};
