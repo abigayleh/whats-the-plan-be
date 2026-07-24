@@ -15,6 +15,7 @@ const serializeMeta = (page) => ({
   createdById: page.createdById,
   groupId: page.groupId,
   parentId: page.parentId,
+  position: page.position,
   createdAt: page.createdAt,
   updatedAt: page.updatedAt,
 });
@@ -28,7 +29,7 @@ const emitScoped = (page, type, payload) =>
 // Metadata only — the tree endpoint never pulls the (potentially large) content JSON.
 const metaSelect = {
   id: true, title: true, icon: true, ownerId: true, createdById: true,
-  groupId: true, parentId: true, createdAt: true, updatedAt: true,
+  groupId: true, parentId: true, position: true, createdAt: true, updatedAt: true,
 };
 
 // Validates title/icon/content present in body. `partial` skips required checks (PATCH).
@@ -70,8 +71,42 @@ router.get('/', async (req, res) => {
     where = { OR: [{ groupId: null, ownerId: req.userId }, { groupId: { in: memberGroupIds } }] };
   }
 
-  const pages = await prisma.page.findMany({ where, select: metaSelect });
+  const pages = await prisma.page.findMany({
+    where, select: metaSelect, orderBy: [{ position: 'asc' }, { title: 'asc' }],
+  });
   res.json(pages.map(serializeMeta));
+});
+
+// Reorder/reparent pages within one scope. Body: { parentId: string|null, orderedIds: [] }.
+// Sets each page's parentId + position (= its index) transactionally. Shared order, so it
+// emits to the scope like other page mutations. Caller must manage every page in the list.
+router.post('/reorder', async (req, res) => {
+  const parentId = req.body?.parentId || null;
+  const orderedIds = req.body?.orderedIds;
+  if (!Array.isArray(orderedIds) || !orderedIds.length || orderedIds.some((id) => typeof id !== 'string'))
+    return res.status(400).json({ error: 'orderedIds must be a non-empty array of ids' });
+
+  const accesses = await Promise.all(orderedIds.map((id) => loadPageAccess(id, req.userId)));
+  for (const access of accesses) {
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.canManage) return res.status(403).json({ error: 'Not allowed to reorder these pages' });
+  }
+
+  // Every page — and the new parent — must live in one scope, and no page may nest under itself.
+  const scope = accesses[0].page.groupId || null;
+  if (accesses.some((a) => (a.page.groupId || null) !== scope))
+    return res.status(400).json({ error: 'All pages must be in the same scope' });
+  const parentCheck = await resolveParent(parentId, req.userId, scope);
+  if (parentCheck.error) return res.status(400).json({ error: parentCheck.error });
+  for (const id of orderedIds) {
+    if (parentId && (await wouldCycle(id, parentId)))
+      return res.status(400).json({ error: 'A page cannot be nested under itself' });
+  }
+
+  const updated = await prisma.$transaction(orderedIds.map((id, index) =>
+    prisma.page.update({ where: { id }, data: { parentId, position: index }, select: metaSelect })));
+  updated.forEach((p) => emitScoped(p, 'page:updated', serializeMeta(p)));
+  res.json(updated.map(serializeMeta));
 });
 
 router.get('/:id', async (req, res) => {

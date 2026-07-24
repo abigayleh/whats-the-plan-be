@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Page" ADD COLUMN "position" INTEGER NOT NULL DEFAULT 0;

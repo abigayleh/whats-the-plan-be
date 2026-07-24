@@ -244,6 +244,7 @@ model Page {
   parentId    String?
   parent      Page?    @relation("PageTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   children    Page[]   @relation("PageTree")
+  position    Int      @default(0) // manual order among siblings; title breaks ties
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt // Page-only: drives recently-edited sorting
 }
