@@ -12,8 +12,9 @@
     "coverage": "vitest run --coverage"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Abigayle Hickey",
+  "license": "UNLICENSED",
+  "private": true,
   "description": "Backend for What's the Plan — Express + Prisma + Socket.io",
   "dependencies": {
     "@prisma/client": "^6.19.3",
