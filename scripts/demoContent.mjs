@@ -204,30 +204,99 @@ export const itineraries = ({ friends }) => [
       checks([['Hot Springs Cove boat tour', false], ['Dinner at Wolf in the Fog', true], ['Rainforest boardwalk hike', false]]),
       p('Budget: roughly $420 each including the ferry and cabin split.'),
     ),
+    // The Plan tab renders the itinerary's to-dos, never its events — so the day-by-day
+    // activities live here, scheduled inside the trip and located, to fill the day map.
     tasks: [
       { title: 'Book the cabin', status: 'DONE', assign: 'maya' },
       { title: 'Buy ferry tickets', status: 'DONE', assign: 'me' },
+      { title: 'Rent surfboards + wetsuits', assign: 'jordan' },
+      { title: 'Pack rain gear — it will rain', subtasks: [sub('Rain shell'), sub('Boots'), sub('Dry bag')] },
+
+      // Day 1 — travel out
       {
-        title: 'Rent surfboards + wetsuits', dueDate: at(15, 12),
-        location: { label: 'Pacific Surf Co, Tofino', lat: 49.1530, lng: -125.9066 },
+        title: 'Ferry — Horseshoe Bay to Departure Bay', assign: 'me',
+        scheduledStart: at(19, 8), scheduledEnd: at(19, 10, 30),
+        location: { label: 'Departure Bay Ferry Terminal, Nanaimo', lat: 49.1936, lng: -123.9556 },
       },
       {
-        title: 'Reserve Wolf in the Fog', assign: 'jordan', dueDate: at(12, 12),
+        title: 'Drive up to Tofino', scheduledStart: at(19, 11), scheduledEnd: at(19, 15),
+        description: 'Four hours with the Cathedral Grove stop — swap drivers in Port Alberni.',
+        location: { label: 'Tofino, BC', lat: 49.1530, lng: -125.9066 },
+      },
+      {
+        title: 'Check in + groceries for the cabin', assign: 'nora',
+        scheduledStart: at(19, 15, 30), scheduledEnd: at(19, 16, 30),
+        location: { label: 'Tofino Co-op', lat: 49.1497, lng: -125.9068 },
+      },
+      {
+        title: 'Sunset walk on Chesterman Beach',
+        scheduledStart: at(19, 19), scheduledEnd: at(19, 20, 30),
+        location: { label: 'Chesterman Beach', lat: 49.1236, lng: -125.8886 },
+      },
+
+      // Day 2 — surf day
+      {
+        title: 'Coffee at Rhino', scheduledStart: at(20, 7, 45), scheduledEnd: at(20, 8, 30),
+        location: { label: 'Rhino Coffee House, Tofino', lat: 49.1531, lng: -125.9061 },
+      },
+      {
+        title: 'Surf lesson at Cox Bay', scheduledStart: at(20, 9), scheduledEnd: at(20, 12),
+        description: 'Booked for four — wetsuits included, bring your own booties.',
+        location: { label: 'Cox Bay Beach', lat: 49.1145, lng: -125.8820 },
+      },
+      {
+        title: 'Lunch at the Tacofino truck', scheduledStart: at(20, 12, 30), scheduledEnd: at(20, 13, 30),
+        location: { label: 'Tacofino, Tofino', lat: 49.1495, lng: -125.9020 },
+      },
+      {
+        title: 'Rainforest boardwalk hike', assign: 'maya',
+        scheduledStart: at(20, 15), scheduledEnd: at(20, 17),
+        location: { label: 'Pacific Rim National Park', lat: 49.0500, lng: -125.7500 },
+      },
+      {
+        title: 'Bonfire back at Chesterman', scheduledStart: at(20, 20), scheduledEnd: at(20, 22),
+        location: { label: 'Chesterman Beach', lat: 49.1236, lng: -125.8886 },
+      },
+
+      // Day 3 — hot springs
+      {
+        title: 'Hot Springs Cove boat tour', assign: 'me',
+        scheduledStart: at(21, 8, 30), scheduledEnd: at(21, 16),
+        description: 'Two hours out by zodiac, 2km boardwalk to the springs. Bring the dry bag.',
+        location: { label: 'Hot Springs Cove', lat: 49.3667, lng: -126.2667 },
+      },
+      {
+        title: 'Dinner at Wolf in the Fog', assign: 'jordan',
+        scheduledStart: at(21, 19), scheduledEnd: at(21, 21),
         location: { label: 'Wolf in the Fog, Tofino', lat: 49.1533, lng: -125.9083 },
       },
       {
-        title: 'Book the Hot Springs Cove tour', assign: 'me', dueDate: at(14, 12),
-        location: { label: 'Hot Springs Cove', lat: 49.3667, lng: -126.2667 },
+        title: 'Chocolate Tofino before it shuts', scheduledStart: at(21, 21, 15), scheduledEnd: at(21, 21, 45),
+        location: { label: 'Chocolate Tofino', lat: 49.1512, lng: -125.9048 },
       },
-      { title: 'Pack rain gear — it will rain', subtasks: [sub('Rain shell'), sub('Boots'), sub('Dry bag')] },
+
+      // Day 4 — home
+      { title: 'Pack up + check out', scheduledStart: at(22, 9), scheduledEnd: at(22, 10) },
+      {
+        title: 'Brunch at Common Loaf', assign: 'nora',
+        scheduledStart: at(22, 10), scheduledEnd: at(22, 11),
+        location: { label: 'Common Loaf Bake Shop', lat: 49.1541, lng: -125.9053 },
+      },
+      {
+        title: 'Stop at Cathedral Grove', scheduledStart: at(22, 13, 30), scheduledEnd: at(22, 14, 30),
+        location: { label: 'MacMillan Provincial Park', lat: 49.2900, lng: -124.6640 },
+      },
+      {
+        title: 'Evening ferry home', scheduledStart: at(22, 16), scheduledEnd: at(22, 18, 30),
+        location: { label: 'Departure Bay Ferry Terminal, Nanaimo', lat: 49.1936, lng: -123.9556 },
+      },
     ],
+    // Headline events only — these are what the shared group calendar shows.
     events: [
       { title: 'Ferry to Nanaimo', startAt: at(19, 8), endAt: at(19, 10, 30), colorLabel: 'teal' },
-      { title: 'Drive to Tofino', startAt: at(19, 11), endAt: at(19, 15), colorLabel: 'teal' },
       { title: 'Surf lesson at Cox Bay', startAt: at(20, 9), endAt: at(20, 12), colorLabel: 'teal' },
       { title: 'Hot Springs Cove tour', startAt: at(21, 8, 30), endAt: at(21, 16), colorLabel: 'teal' },
-      { title: 'Dinner at Wolf in the Fog', startAt: at(21, 19), endAt: at(21, 21), colorLabel: 'teal' },
-      { title: 'Drive back + evening ferry', startAt: at(22, 10), endAt: at(22, 17), colorLabel: 'teal' },
+      { title: 'Evening ferry home', startAt: at(22, 16), endAt: at(22, 18, 30), colorLabel: 'teal' },
     ],
     polls: [
       { question: 'Which cabin should we book?', options: ['Cox Bay — ocean front', 'Chesterman Beach — cheaper', 'Downtown Tofino — walkable'], votes: { me: 0, maya: 0, jordan: 2, nora: 0 } },
@@ -248,6 +317,36 @@ export const itineraries = ({ friends }) => [
       { title: 'Book flights', status: 'DONE', assign: 'me' },
       { title: 'Hotel — Pearl District', status: 'DONE', assign: 'maya' },
       { title: 'Settle up the shared tab', status: 'DONE', assign: 'jordan' },
+      {
+        title: 'Fly to PDX', status: 'DONE', assign: 'me',
+        scheduledStart: at(-38, 7), scheduledEnd: at(-38, 12, 30),
+        location: { label: 'Portland International Airport', lat: 45.5898, lng: -122.5951 },
+      },
+      {
+        title: "Powell's City of Books", status: 'DONE',
+        scheduledStart: at(-37, 13), scheduledEnd: at(-37, 16),
+        location: { label: "Powell's City of Books", lat: 45.5232, lng: -122.6819 },
+      },
+      {
+        title: 'Food cart pod on SW 10th', status: 'DONE',
+        scheduledStart: at(-37, 18), scheduledEnd: at(-37, 19, 30),
+        location: { label: 'SW 10th & Alder Food Carts', lat: 45.5215, lng: -122.6819 },
+      },
+      {
+        title: 'Japanese Garden', status: 'DONE', assign: 'maya',
+        scheduledStart: at(-36, 10), scheduledEnd: at(-36, 12),
+        location: { label: 'Portland Japanese Garden', lat: 45.5188, lng: -122.7080 },
+      },
+      {
+        title: 'Coffee at Stumptown', status: 'DONE',
+        scheduledStart: at(-36, 13), scheduledEnd: at(-36, 14),
+        location: { label: 'Stumptown Coffee, Downtown', lat: 45.5202, lng: -122.6742 },
+      },
+      {
+        title: 'Fly home', status: 'DONE',
+        scheduledStart: at(-35, 17), scheduledEnd: at(-35, 23),
+        location: { label: 'Portland International Airport', lat: 45.5898, lng: -122.5951 },
+      },
     ],
     events: [
       { title: 'Flight to PDX', startAt: at(-38, 7), endAt: at(-38, 12, 30), colorLabel: 'amber' },
