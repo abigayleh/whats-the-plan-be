@@ -12,6 +12,7 @@ const serializeAttachment = (att) => ({
   uploadedBy: att.uploadedBy,
   taskId: att.taskId,
   messageId: att.messageId,
+  pageId: att.pageId,
   createdAt: att.createdAt,
 });
 

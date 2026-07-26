@@ -165,6 +165,8 @@ model Attachment {
   task       Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   messageId  String?
   message    Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pageId     String?
+  page       Page?    @relation(fields: [pageId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
 }
 
@@ -244,9 +246,10 @@ model Page {
   parentId    String?
   parent      Page?    @relation("PageTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   children    Page[]   @relation("PageTree")
-  position    Int      @default(0) // manual order among siblings; title breaks ties
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt // Page-only: drives recently-edited sorting
+  position    Int          @default(0) // manual order among siblings; title breaks ties
+  attachments Attachment[] // images embedded in `content`, referenced there by id
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt // Page-only: drives recently-edited sorting
 }
 
 enum Role {
