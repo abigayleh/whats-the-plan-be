@@ -66,6 +66,17 @@ The server listens on `PORT` (default `4000`). Health check: `GET /api/health`.
 | `npm start` | Start the server (production) |
 | `npm run prisma:generate` | Regenerate the Prisma client |
 | `npm run prisma:migrate` | Create + apply a dev migration |
+| `npm run test:run` | Run the test suite once (Vitest) |
+| `npm test` | Run tests in watch mode |
+
+---
+
+## Testing
+
+**139 tests** with Vitest + supertest, requiring no database — pure `lib/` logic
+(recurrence, serializers, tokens) plus route validation and auth guards. Run
+`npm run test:run`. See [TESTING.md](TESTING.md) for what's covered and why
+DB-backed route tests are deferred.
 
 ---
 
