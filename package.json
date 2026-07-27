@@ -9,13 +9,16 @@
     "prisma:migrate": "prisma migrate dev",
     "test": "vitest",
     "test:run": "vitest run",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "demo:seed": "node scripts/seed-demo.mjs",
+    "demo:undo": "node scripts/seed-demo.mjs --undo",
+    "demo:reset": "node scripts/seed-demo.mjs --undo && node scripts/seed-demo.mjs"
   },
   "keywords": [],
   "author": "Abigayle Hickey",
   "license": "UNLICENSED",
   "private": true,
-  "description": "Backend for What's the Plan — Express + Prisma + Socket.io",
+  "description": "Backend for What's the Plan \u2014 Express + Prisma + Socket.io",
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",

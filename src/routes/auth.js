@@ -7,8 +7,14 @@ const {
 const { sendVerificationEmail, notifyAdminOfNewUser } = require('../lib/email');
 const { publicUser } = require('../lib/serializers');
 const requireAuth = require('../middleware/requireAuth');
+const { rateLimit } = require('../lib/rateLimit');
+const { demoEmail } = require('../lib/demoAccount');
 
 const router = express.Router();
+
+// The demo route mints a session with no credentials, so it gets its own ceiling. Generous
+// enough that a portfolio visitor reloading a few times never notices.
+const demoLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
@@ -54,6 +60,22 @@ router.post('/login', async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.emailVerified)
     return res.status(403).json({ error: 'Please verify your email before logging in', code: 'EMAIL_UNVERIFIED' });
+
+  const tokens = await issueTokens(user.id);
+  return res.json({ user: publicUser(user), ...tokens });
+});
+
+// Public auto-login for the portfolio demo: no credentials, because the account is meant to
+// be shared and the link itself is the only thing gating it. Anyone who reaches this is
+// fully signed in as that account, so it's off unless DEMO_USER_EMAIL names one, and the
+// account is protected from password changes and deletion (see lib/demoAccount).
+// A 404 rather than a 403 when disabled: an app without a demo shouldn't advertise one.
+router.post('/demo', demoLimiter, async (req, res) => {
+  const email = demoEmail();
+  if (!email) return res.status(404).json({ error: 'Not found' });
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return res.status(404).json({ error: 'Not found' });
 
   const tokens = await issueTokens(user.id);
   return res.json({ user: publicUser(user), ...tokens });

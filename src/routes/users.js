@@ -5,6 +5,7 @@ const { MIN_PASSWORD } = require('./auth');
 const { publicUser } = require('../lib/serializers');
 const { deleteFile } = require('../lib/storage');
 const { emitToGroup, clearGroupRoom, removeUserFromGroupRoom } = require('../socket');
+const { blockDemoAccount } = require('../lib/demoAccount');
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ router.patch('/me', async (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
-router.post('/me/password', async (req, res) => {
+router.post('/me/password', blockDemoAccount, async (req, res) => {
   const currentPassword = req.body?.currentPassword || '';
   const newPassword = req.body?.newPassword || '';
 
@@ -40,7 +41,7 @@ router.post('/me/password', async (req, res) => {
   res.status(204).end();
 });
 
-router.delete('/me', async (req, res) => {
+router.delete('/me', blockDemoAccount, async (req, res) => {
   const userId = req.userId;
 
   const { soleAdminGroupIds, remainingGroupIds, orphanedFilePaths } = await prisma.$transaction(async (tx) => {
