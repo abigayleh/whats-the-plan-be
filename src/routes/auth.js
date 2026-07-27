@@ -8,7 +8,7 @@ const { sendVerificationEmail, notifyAdminOfNewUser } = require('../lib/email');
 const { publicUser } = require('../lib/serializers');
 const requireAuth = require('../middleware/requireAuth');
 const { rateLimit } = require('../lib/rateLimit');
-const { demoEmail } = require('../lib/demoAccount');
+const { DEMO_EMAIL } = require('../lib/demoAccount');
 
 const router = express.Router();
 
@@ -67,14 +67,13 @@ router.post('/login', async (req, res) => {
 
 // Public auto-login for the portfolio demo: no credentials, because the account is meant to
 // be shared and the link itself is the only thing gating it. Anyone who reaches this is
-// fully signed in as that account, so it's off unless DEMO_USER_EMAIL names one, and the
-// account is protected from password changes and deletion (see lib/demoAccount).
-// A 404 rather than a 403 when disabled: an app without a demo shouldn't advertise one.
+// fully signed in as the demo account, which is in turn protected from password changes and
+// deletion (see lib/demoAccount). The password is never checked, so it never has to reach
+// the client — which is the point: a password the frontend holds is a password anyone can
+// read and reuse on the real login form.
+// A 404 when the account is absent: a database without it shouldn't advertise a demo.
 router.post('/demo', demoLimiter, async (req, res) => {
-  const email = demoEmail();
-  if (!email) return res.status(404).json({ error: 'Not found' });
-
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
   if (!user) return res.status(404).json({ error: 'Not found' });
 
   const tokens = await issueTokens(user.id);

@@ -1,33 +1,15 @@
 import request from 'supertest';
 import { app } from './helpers.js';
 
-// POST /api/auth/demo hands out a session with no credentials, so the only pre-DB branch
-// worth asserting is the one that keeps it switched off. The success path queries the DB
-// immediately and is out of scope here (Prisma isn't mockable through the CJS app graph).
+// The demo account is a hardcoded constant now, so this route has no pre-DB branch left to
+// assert — it queries Prisma immediately, which isn't mockable through the CJS app graph
+// (see TESTING.md). What's still worth pinning is that it stays public: putting it behind
+// auth would break the portfolio link, and nothing else here exercises the route.
 describe('POST /api/auth/demo', () => {
-  const original = process.env.DEMO_USER_EMAIL;
-  afterEach(() => {
-    if (original === undefined) delete process.env.DEMO_USER_EMAIL;
-    else process.env.DEMO_USER_EMAIL = original;
-  });
-
-  it('404s when no demo account is configured', async () => {
-    delete process.env.DEMO_USER_EMAIL;
+  it('is reachable without an auth header', async () => {
     const res = await request(app).post('/api/auth/demo');
-    expect(res.status).toBe(404);
-  });
-
-  // Blank or whitespace-only counts as unset, so a half-filled env file can't accidentally
-  // switch public auto-login on.
-  it('treats a blank setting as switched off', async () => {
-    process.env.DEMO_USER_EMAIL = '   ';
-    const res = await request(app).post('/api/auth/demo');
-    expect(res.status).toBe(404);
-  });
-
-  it('needs no auth header to be reached', async () => {
-    delete process.env.DEMO_USER_EMAIL;
-    const res = await request(app).post('/api/auth/demo');
+    // A 500 here is the unreachable test database, not a rejection. The point is only that
+    // no auth middleware turned the request away before the handler ran.
     expect(res.status).not.toBe(401);
   });
 });

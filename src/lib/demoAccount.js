@@ -1,19 +1,18 @@
 const prisma = require('./prisma');
 
-// The portfolio demo account, handed out publicly via POST /api/auth/demo. Unset means the
-// whole demo feature is off, which is the right default for any other deployment.
-const demoEmail = () => (process.env.DEMO_USER_EMAIL || '').trim().toLowerCase();
+// The portfolio demo account — the one handed out publicly via POST /api/auth/demo, which
+// signs anyone in as it without a password. Hardcoded rather than configured, matching
+// scripts/seed-demo.mjs, which targets this same address to build the demo's contents.
+const DEMO_EMAIL = 'abigayle100@icloud.com';
 
 let cachedId = null;
 
 // Resolved once and held: this sits on the write path of the profile routes, and the id
-// can't change while the process lives. A miss isn't cached — that only happens when the
-// env var names an account that doesn't exist, and re-checking makes it self-healing.
+// can't change while the process lives. A miss isn't cached — that only happens on a
+// database without this account, and re-checking makes it self-healing.
 async function demoUserId() {
-  const email = demoEmail();
-  if (!email) return null;
   if (cachedId) return cachedId;
-  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  const user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL }, select: { id: true } });
   cachedId = user?.id ?? null;
   return cachedId;
 }
@@ -32,4 +31,4 @@ async function blockDemoAccount(req, res, next) {
   }
 }
 
-module.exports = { demoEmail, demoUserId, blockDemoAccount };
+module.exports = { DEMO_EMAIL, demoUserId, blockDemoAccount };
