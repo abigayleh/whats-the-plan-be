@@ -1,6 +1,6 @@
 # Testing
 
-Vitest + supertest — **139 tests**, no database required.
+Vitest + supertest — **171 tests**, no database required.
 
 ## Commands
 

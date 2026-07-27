@@ -126,8 +126,9 @@ model Attachment {
 
 ## Itineraries
 
-- A named trip or outing spanning a date range
-- Scoped to a group (or private)
+- A named trip that is either **planned** (both `startDate` + `endDate`) or **to be planned** (a `dayCount`, both dates null) — never a partial pair. Validation lives in `src/lib/itinerarySchedule.js`
+- Manually ordered via `sortOrder` (shared by everyone who can see it, not per-user); list queries order by `sortOrder` then `createdAt`
+- Scoped to a group (or private). `PATCH /:id` can change the scope; that re-scopes the itinerary's list, events and polls in one transaction (`src/lib/itineraryScope.js`) and is refused with `ITINERARY_HAS_POLLS` when going personal while polls exist
 - Child events link back via `Event.itineraryId`
 - Calendar renders itinerary as a multi-day banner; child events appear as normal chips, color-matched
 
@@ -399,6 +400,7 @@ DELETE /api/events/:id
 ```
 GET    /api/itineraries
 POST   /api/itineraries
+PATCH  /api/itineraries/order             # { ids: [...] } → sortOrder by array index
 PATCH  /api/itineraries/:id
 DELETE /api/itineraries/:id
 GET    /api/itineraries/:id/events

@@ -88,8 +88,11 @@ model Itinerary {
   title       String
   destination String?
   description String?
-  startDate   DateTime
-  endDate     DateTime
+  // Either both dates (planned) or dayCount with null dates ("to be planned").
+  startDate   DateTime?
+  endDate     DateTime?
+  dayCount    Int? // expected length in days of a trip that has no dates yet
+  sortOrder   Int       @default(0) // manual sidebar order, shared by everyone who can see it
   colorLabel  String?
   icon        String? // icon key from the shared content-icon set (same as Pages)
   content     Json? // TipTap notes doc — one shared planning note per itinerary

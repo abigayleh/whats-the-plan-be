@@ -2,6 +2,8 @@ const express = require('express');
 const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { getMembership } = require('../lib/membership');
+const { parseSchedule, resolvePatchedSchedule } = require('../lib/itinerarySchedule');
+const { moveScopedChildren } = require('../lib/itineraryScope');
 const { emitToGroup, emitToUser } = require('../socket');
 const { serializeEvent, createEventForUser } = require('./events');
 const { expandTask } = require('./tasks');
@@ -16,6 +18,8 @@ const serializeItinerary = (it) => ({
   description: it.description,
   startDate: it.startDate,
   endDate: it.endDate,
+  dayCount: it.dayCount ?? null,
+  sortOrder: it.sortOrder ?? 0,
   colorLabel: it.colorLabel,
   icon: it.icon ?? null,
   completedAt: it.completedAt ?? null,
@@ -45,11 +49,35 @@ async function loadItineraryAccess(id, userId) {
   return { itinerary, membership, canManage };
 }
 
+// Validates a requested scope change. Returns { groupId } when one is wanted
+// (undefined when not), or { status, error }. The caller has already proved it can manage.
+async function parseScopeMove(body, itinerary, userId) {
+  if (!('groupId' in body)) return {};
+  const groupId = body.groupId || null;
+  if (groupId === itinerary.groupId) return {};
+  if (groupId && !(await getMembership(userId, groupId)))
+    return { status: 403, error: 'Not a member of this group' };
+  // Going personal hands the itinerary to its creator alone, so only they may do it.
+  if (!groupId && itinerary.createdById !== userId)
+    return { status: 403, error: 'Only the creator can make this itinerary personal' };
+  if (!groupId && (await prisma.poll.count({ where: { itineraryId: itinerary.id } })) > 0)
+    return {
+      status: 409,
+      error: 'Delete the itinerary polls before making it personal',
+      code: 'ITINERARY_HAS_POLLS',
+    };
+  return { groupId };
+}
+
+const memberGroupIdsFor = async (userId) =>
+  (await prisma.groupMember.findMany({ where: { userId }, select: { groupId: true } })).map((m) => m.groupId);
+
+// Manual order first; createdAt breaks ties so the sequence is stable.
+const itineraryOrder = [{ sortOrder: 'asc' }, { createdAt: 'asc' }];
+
 router.get('/', async (req, res) => {
   const { groupId } = req.query;
-  const memberGroupIds = (
-    await prisma.groupMember.findMany({ where: { userId: req.userId }, select: { groupId: true } })
-  ).map((m) => m.groupId);
+  const memberGroupIds = await memberGroupIdsFor(req.userId);
 
   let where;
   if (groupId === 'personal') {
@@ -64,33 +92,34 @@ router.get('/', async (req, res) => {
   const itineraries = await prisma.itinerary.findMany({
     where,
     include: withList,
-    orderBy: { startDate: 'asc' },
+    orderBy: itineraryOrder,
   });
   res.json(itineraries.map(serializeItinerary));
 });
 
 router.post('/', async (req, res) => {
-  const { title, destination, description, startDate, endDate, colorLabel, icon, groupId } = req.body || {};
+  const { title, destination, description, colorLabel, icon, groupId } = req.body || {};
   const name = String(title || '').trim();
   if (!name) return res.status(400).json({ error: 'Title required' });
-  const sDate = new Date(startDate);
-  const eDate = new Date(endDate);
-  if (isNaN(sDate.getTime()) || isNaN(eDate.getTime()))
-    return res.status(400).json({ error: 'Valid startDate and endDate required' });
-  if (eDate < sDate) return res.status(400).json({ error: 'endDate must be after startDate' });
+  const schedule = parseSchedule(req.body || {});
+  if (schedule.error) return res.status(400).json({ error: schedule.error });
   const gId = groupId || null;
   if (gId && !(await getMembership(req.userId, gId)))
     return res.status(403).json({ error: 'Not a member of this group' });
 
+  const scopeWhere = gId ? { groupId: gId } : { groupId: null, createdById: req.userId };
+
   // Create the itinerary and its one to-do list together so the pair can never half-exist.
   const itinerary = await prisma.$transaction(async (tx) => {
+    // New itineraries land at the end of their scope's manual order.
+    const last = await tx.itinerary.aggregate({ where: scopeWhere, _max: { sortOrder: true } });
     const created = await tx.itinerary.create({
       data: {
         title: name,
         destination: destination || null,
         description: description || null,
-        startDate: sDate,
-        endDate: eDate,
+        ...schedule,
+        sortOrder: (last._max.sortOrder ?? -1) + 1,
         colorLabel: colorLabel || null,
         icon: icon || null,
         groupId: gId,
@@ -107,22 +136,46 @@ router.post('/', async (req, res) => {
   res.status(201).json(payload);
 });
 
+const MAX_REORDER = 500;
+
+// Declared before /:id so "order" is never read as an itinerary id.
+router.patch('/order', async (req, res) => {
+  const ids = req.body?.ids;
+  if (!Array.isArray(ids) || !ids.length || !ids.every((id) => typeof id === 'string' && id))
+    return res.status(400).json({ error: 'ids must be a non-empty array of itinerary ids' });
+  if (ids.length > MAX_REORDER) return res.status(400).json({ error: `At most ${MAX_REORDER} ids` });
+  if (new Set(ids).size !== ids.length) return res.status(400).json({ error: 'ids must be unique' });
+
+  const memberGroupIds = await memberGroupIdsFor(req.userId);
+  const visible = await prisma.itinerary.findMany({
+    where: {
+      id: { in: ids },
+      OR: [{ groupId: null, createdById: req.userId }, { groupId: { in: memberGroupIds } }],
+    },
+    select: { id: true },
+  });
+  if (visible.length !== ids.length)
+    return res.status(404).json({ error: 'One or more itineraries were not found' });
+
+  await prisma.$transaction(
+    ids.map((id, index) => prisma.itinerary.update({ where: { id }, data: { sortOrder: index } })),
+  );
+  res.json({ ids });
+});
+
 router.patch('/:id', async (req, res) => {
   const access = await loadItineraryAccess(req.params.id, req.userId);
   if (access.error) return res.status(access.status).json({ error: access.error });
   if (!access.canManage) return res.status(403).json({ error: 'Not allowed to modify this itinerary' });
   const body = req.body || {};
-  if ('groupId' in body && (body.groupId || null) !== access.itinerary.groupId)
-    return res.status(400).json({ error: 'Itinerary scope is immutable' });
 
-  const newStart = body.startDate !== undefined ? new Date(body.startDate) : access.itinerary.startDate;
-  const newEnd = body.endDate !== undefined ? new Date(body.endDate) : access.itinerary.endDate;
-  if (isNaN(new Date(newStart).getTime()) || isNaN(new Date(newEnd).getTime()))
-    return res.status(400).json({ error: 'Valid startDate and endDate required' });
-  if (new Date(newEnd) < new Date(newStart))
-    return res.status(400).json({ error: 'endDate must be after startDate' });
+  const schedule = resolvePatchedSchedule(body, access.itinerary);
+  if (schedule?.error) return res.status(400).json({ error: schedule.error });
 
-  const data = {};
+  const move = await parseScopeMove(body, access.itinerary, req.userId);
+  if (move.error) return res.status(move.status).json({ error: move.error, code: move.code });
+
+  const data = { ...schedule };
   if (body.title !== undefined) {
     const n = String(body.title).trim();
     if (!n) return res.status(400).json({ error: 'Title required' });
@@ -133,8 +186,6 @@ router.patch('/:id', async (req, res) => {
   if (body.colorLabel !== undefined) data.colorLabel = body.colorLabel || null;
   if (body.icon !== undefined) data.icon = body.icon || null;
   if (body.content !== undefined) data.content = body.content ?? null;
-  if (body.startDate !== undefined) data.startDate = newStart;
-  if (body.endDate !== undefined) data.endDate = newEnd;
   if (body.completedAt !== undefined) {
     if (body.completedAt === null) data.completedAt = null;
     else {
@@ -144,13 +195,19 @@ router.patch('/:id', async (req, res) => {
     }
   }
 
-  const itinerary = await prisma.itinerary.update({
-    where: { id: req.params.id },
-    data,
-    include: withList,
+  if (move.groupId !== undefined) data.groupId = move.groupId;
+
+  // One transaction so the itinerary and its scoped children never disagree.
+  const itinerary = await prisma.$transaction(async (tx) => {
+    await tx.itinerary.update({ where: { id: req.params.id }, data });
+    if (move.groupId !== undefined) await moveScopedChildren(tx, req.params.id, move.groupId);
+    return tx.itinerary.findUnique({ where: { id: req.params.id }, include: withList });
   });
+
   const payload = serializeItinerary(itinerary);
   emitItinerary(itinerary, 'itinerary:updated', payload);
+  // The old scope needs the same update or it keeps showing an itinerary that left.
+  if (move.groupId !== undefined) emitItinerary(access.itinerary, 'itinerary:updated', payload);
   res.json(payload);
 });
 
