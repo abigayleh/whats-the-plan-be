@@ -1,6 +1,6 @@
 import recurrence from '../src/lib/recurrence.js';
 
-const { expandOccurrences, isValidRule } = recurrence;
+const { expandOccurrences, isValidRule, snapToOccurrence } = recurrence;
 
 const DAY_MS = 86400000;
 // Local-time constructor + local getters throughout: mirrors the module's own use of
@@ -233,5 +233,48 @@ describe('expandOccurrences — yearly', () => {
     expect(out.map((o) => [o.startAt.getFullYear(), o.startAt.getMonth(), o.startAt.getDate()])).toEqual([
       [2024, 1, 29], [2025, 2, 1], [2026, 2, 1],
     ]);
+  });
+});
+describe('snapToOccurrence', () => {
+  const daily = { frequency: 'daily', interval: 1 };
+  const task = (recurrenceRule, scheduledStart) => ({ scheduledStart, dueDate: null, recurrenceRule });
+
+  it('leaves the date alone when the task does not recur', () => {
+    const sent = at(2026, 6, 20, 12, 0);
+    expect(snapToOccurrence(task(null, at(2026, 6, 1, 9, 0)), sent)).toBe(sent);
+  });
+
+  it('leaves the date alone when the task has no anchor to expand from', () => {
+    const sent = at(2026, 6, 20, 12, 0);
+    expect(snapToOccurrence({ recurrenceRule: daily }, sent)).toBe(sent);
+  });
+
+  it('snaps a midday date onto that day’s occurrence time', () => {
+    const snapped = snapToOccurrence(task(daily, at(2026, 6, 1, 9, 30)), at(2026, 6, 20, 12, 0));
+    expect(snapped.getTime()).toBe(at(2026, 6, 20, 9, 30).getTime());
+  });
+
+  it('keeps a midday date on its own day when occurrences start at midnight', () => {
+    const snapped = snapToOccurrence(task(daily, at(2026, 6, 1, 0, 0)), at(2026, 6, 20, 12, 0));
+    expect(snapped.getTime()).toBe(at(2026, 6, 20, 0, 0).getTime());
+  });
+
+  it('returns an exact occurrence start unchanged', () => {
+    const exact = at(2026, 6, 20, 9, 30);
+    expect(snapToOccurrence(task(daily, at(2026, 6, 1, 9, 30)), exact).getTime()).toBe(exact.getTime());
+  });
+
+  it('snaps onto the nearest weekly occurrence, not the sent weekday', () => {
+    const weekly = { frequency: 'weekly', interval: 1, daysOfWeek: [3] }; // Wednesdays
+    // Sent for Thursday 2026-07-23; the series only recurs on Wednesday the 22nd.
+    const snapped = snapToOccurrence(task(weekly, at(2026, 6, 1, 8, 0)), at(2026, 6, 23, 12, 0));
+    expect(snapped.getDay()).toBe(3);
+    expect(snapped.getDate()).toBe(22);
+  });
+
+  it('falls back to the sent date when no occurrence is near it', () => {
+    const yearly = { frequency: 'yearly', interval: 1 };
+    const sent = at(2026, 6, 20, 12, 0);
+    expect(snapToOccurrence(task(yearly, at(2026, 0, 5, 9, 0)), sent)).toBe(sent);
   });
 });

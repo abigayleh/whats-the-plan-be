@@ -3,7 +3,7 @@ const prisma = require('../lib/prisma');
 const { getMembership } = require('../lib/membership');
 const { loadListAccess, loadEditableTask, isValidAssignee } = require('../lib/listAccess');
 const { serializeAttachment, publicUser } = require('../lib/serializers');
-const { isValidRule } = require('../lib/recurrence');
+const { isValidRule, snapToOccurrence } = require('../lib/recurrence');
 const { isValidSubtasks } = require('../lib/subtasks');
 const { emitToGroup, emitToUser } = require('../socket');
 
@@ -325,9 +325,11 @@ router.patch('/:listId/tasks/:id', async (req, res) => {
   // Per-day completion for a recurring series: toggle one occurrence's date in completedDates,
   // leaving the series (and its scalar status) untouched so it keeps recurring.
   if (body.occurrenceDate !== undefined) {
-    const date = new Date(body.occurrenceDate);
-    if (isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid occurrenceDate' });
-    const iso = date.toISOString();
+    const sent = new Date(body.occurrenceDate);
+    if (isNaN(sent.getTime())) return res.status(400).json({ error: 'Invalid occurrenceDate' });
+    // The client may only know which day it means (ticking a missed occurrence from Overdue),
+    // and can't reproduce the expansion's exact time-of-day across timezones — so snap.
+    const iso = snapToOccurrence(result.task, sent).toISOString();
     const current = result.task.completedDates || [];
     const next = current.includes(iso) ? current.filter((d) => d !== iso) : [...current, iso];
     const task = await prisma.task.update({

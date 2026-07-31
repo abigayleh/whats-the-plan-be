@@ -132,4 +132,20 @@ function expandOccurrences(event, windowStart, windowEnd) {
   return occurrences;
 }
 
-module.exports = { expandOccurrences, isValidRule };
+// The task occurrence closest to `date` — completedDates must hold exact occurrence starts,
+// but a client ticking a past day only knows the day, not the expansion's time-of-day (which
+// is derived server-side and shifts with DST). Ties go to the earlier occurrence, so a date
+// sent at midday lands on that day's occurrence even when it starts at midnight.
+// Returns `date` untouched when the task doesn't recur or has no anchor to expand from.
+function snapToOccurrence(task, date) {
+  const anchor = task.scheduledStart || task.dueDate;
+  if (!anchor || !isValidRule(task.recurrenceRule)) return date;
+  const shim = { startAt: anchor, endAt: anchor, recurrenceRule: task.recurrenceRule };
+  const window = 36 * 3600 * 1000; // a day either side, so the nearest occurrence is always in range
+  const found = expandOccurrences(shim, new Date(date.getTime() - window), new Date(date.getTime() + window))
+    .map((occ) => occ.startAt)
+    .sort((a, b) => Math.abs(a - date) - Math.abs(b - date) || a - b);
+  return found[0] || date;
+}
+
+module.exports = { expandOccurrences, isValidRule, snapToOccurrence };
