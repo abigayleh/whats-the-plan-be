@@ -1,6 +1,8 @@
 import recurrence from '../src/lib/recurrence.js';
 
-const { expandOccurrences, isValidRule, snapToOccurrence } = recurrence;
+const {
+  expandOccurrences, isValidRule, snapToOccurrence, withoutSkipped,
+} = recurrence;
 
 const DAY_MS = 86400000;
 // Local-time constructor + local getters throughout: mirrors the module's own use of
@@ -276,5 +278,30 @@ describe('snapToOccurrence', () => {
     const yearly = { frequency: 'yearly', interval: 1 };
     const sent = at(2026, 6, 20, 12, 0);
     expect(snapToOccurrence(task(yearly, at(2026, 0, 5, 9, 0)), sent)).toBe(sent);
+  });
+});
+
+describe('withoutSkipped', () => {
+  const occ = (d) => ({ startAt: new Date(Date.UTC(2026, 7, d)), endAt: new Date(Date.UTC(2026, 7, d)) });
+  const iso = (d) => new Date(Date.UTC(2026, 7, d)).toISOString();
+  const week = [occ(3), occ(4), occ(5)];
+
+  it('drops only the days the user removed', () => {
+    const kept = withoutSkipped(week, [iso(4)]);
+    expect(kept.map((o) => o.startAt.toISOString())).toEqual([iso(3), iso(5)]);
+  });
+
+  it('keeps every occurrence when nothing is skipped', () => {
+    expect(withoutSkipped(week, [])).toHaveLength(3);
+    expect(withoutSkipped(week, null)).toHaveLength(3);
+    expect(withoutSkipped(week, undefined)).toHaveLength(3);
+  });
+
+  it('ignores a skipped date that is not an occurrence', () => {
+    expect(withoutSkipped(week, [iso(9)])).toHaveLength(3);
+  });
+
+  it('can empty a series entirely', () => {
+    expect(withoutSkipped(week, [iso(3), iso(4), iso(5)])).toEqual([]);
   });
 });

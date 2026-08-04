@@ -148,4 +148,14 @@ function snapToOccurrence(task, date) {
   return found[0] || date;
 }
 
-module.exports = { expandOccurrences, isValidRule, snapToOccurrence };
+// Drops occurrences the user removed from the series. Lives here rather than inline in the
+// route so "a skipped day never expands" is testable without a database.
+function withoutSkipped(occurrences, skippedDates) {
+  if (!skippedDates?.length) return occurrences;
+  const skipped = new Set(skippedDates);
+  return occurrences.filter((occ) => !skipped.has(occ.startAt.toISOString()));
+}
+
+module.exports = {
+  expandOccurrences, isValidRule, snapToOccurrence, withoutSkipped,
+};

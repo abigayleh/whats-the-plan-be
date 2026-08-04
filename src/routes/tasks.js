@@ -2,7 +2,7 @@ const express = require('express');
 const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { serializeTask } = require('./lists');
-const { expandOccurrences, isValidRule } = require('../lib/recurrence');
+const { expandOccurrences, isValidRule, withoutSkipped } = require('../lib/recurrence');
 
 const router = express.Router();
 
@@ -30,18 +30,20 @@ function expandTask(task, windowStart, windowEnd) {
 
   const base = serializeTask(task);
   const completed = new Set(base.completedDates);
-
-  return expandOccurrences(shim, windowStart, windowEnd).map((occ) => ({
-    ...base,
-    // A recurring series never completes as a whole — each day's done state is per-occurrence.
-    ...(isRecurring && { status: completed.has(occ.startAt.toISOString()) ? 'DONE' : 'TODO' }),
-    groupId: task.list.groupId,
-    isRecurring,
-    instanceId: isRecurring ? `${task.id}@${occ.startAt.toISOString()}` : task.id,
-    ...(task.scheduledStart
-      ? { scheduledStart: occ.startAt, scheduledEnd: occ.endAt }
-      : { dueDate: occ.startAt }),
-  }));
+  // Days removed from the series stop expanding entirely — the calendar must never draw a
+  // day the list says is gone.
+  return withoutSkipped(expandOccurrences(shim, windowStart, windowEnd), base.skippedDates)
+    .map((occ) => ({
+      ...base,
+      // A recurring series never completes as a whole — each day's done state is per-occurrence.
+      ...(isRecurring && { status: completed.has(occ.startAt.toISOString()) ? 'DONE' : 'TODO' }),
+      groupId: task.list.groupId,
+      isRecurring,
+      instanceId: isRecurring ? `${task.id}@${occ.startAt.toISOString()}` : task.id,
+      ...(task.scheduledStart
+        ? { scheduledStart: occ.startAt, scheduledEnd: occ.endAt }
+        : { dueDate: occ.startAt }),
+    }));
 }
 
 router.get('/assigned-to-me', async (req, res) => {

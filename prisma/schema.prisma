@@ -148,6 +148,7 @@ model Task {
   scheduledEnd   DateTime?
   recurrenceRule Json? // { frequency: 'daily'|'weekly'|'monthly'|'yearly', interval: number }
   completedDates Json? // recurring only: ISO timestamps of occurrences marked done per-day
+  skippedDates   Json? // recurring only: ISO timestamps of occurrences removed from the series
   subtasks       Json? // [{ id, title, done }] — always edited as a whole with the task
   location       Json? // { label, lat, lng } — a to-do's place, pinned on the itinerary map
   assignedToId   String?

@@ -42,6 +42,7 @@ const serializeTask = (task) => ({
   scheduledEnd: task.scheduledEnd,
   recurrenceRule: task.recurrenceRule,
   completedDates: task.completedDates || [],
+  skippedDates: task.skippedDates || [],
   subtasks: task.subtasks || [],
   assignedToId: task.assignedToId,
   assignee: task.assignee ? publicUser(task.assignee) : null,
@@ -334,6 +335,29 @@ router.patch('/:listId/tasks/:id', async (req, res) => {
     const next = current.includes(iso) ? current.filter((d) => d !== iso) : [...current, iso];
     const task = await prisma.task.update({
       where: { id: req.params.id }, data: { completedDates: next }, include: taskInclude,
+    });
+    const payload = serializeTask(task);
+    emitScoped(result.list, 'task:updated', payload);
+    return res.json(payload);
+  }
+
+  // Removing one day from a series: record the occurrence in skippedDates so it stops
+  // expanding, leaving every other day — and the series itself — alone. Deleting the whole
+  // to-do stays a DELETE, which the calendar deliberately doesn't offer.
+  if (body.skipDate !== undefined) {
+    const sent = new Date(body.skipDate);
+    if (isNaN(sent.getTime())) return res.status(400).json({ error: 'Invalid skipDate' });
+    if (!isValidRule(result.task.recurrenceRule))
+      return res.status(400).json({ error: 'Only a recurring to-do has days to skip' });
+    const iso = snapToOccurrence(result.task, sent).toISOString();
+    const current = result.task.skippedDates || [];
+    const next = current.includes(iso) ? current : [...current, iso];
+    // A skipped day can't also be a completed one.
+    const completed = (result.task.completedDates || []).filter((d) => d !== iso);
+    const task = await prisma.task.update({
+      where: { id: req.params.id },
+      data: { skippedDates: next, completedDates: completed },
+      include: taskInclude,
     });
     const payload = serializeTask(task);
     emitScoped(result.list, 'task:updated', payload);
