@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const {
-  issueTokens, rotateRefreshToken, revokeRefreshToken, signVerifyToken, verifyVerifyToken,
+  issueTokens, renewSession, revokeRefreshToken, signVerifyToken, verifyVerifyToken,
 } = require('../lib/tokens');
 const { sendVerificationEmail, notifyAdminOfNewUser } = require('../lib/email');
 const { publicUser } = require('../lib/serializers');
@@ -107,7 +107,7 @@ router.post('/resend-verification', async (req, res) => {
 
 router.post('/refresh', async (req, res) => {
   const refreshToken = req.body?.refreshToken || '';
-  const tokens = await rotateRefreshToken(refreshToken);
+  const tokens = await renewSession(refreshToken);
   if (!tokens) return res.status(401).json({ error: 'Invalid or expired refresh token' });
   return res.json(tokens);
 });

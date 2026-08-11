@@ -2,8 +2,8 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const prisma = require('./prisma');
 
-const ACCESS_TTL = '15m';
-const REFRESH_TTL_DAYS = 7;
+const ACCESS_TTL = '12h';
+const REFRESH_TTL_DAYS = 30;
 const VERIFY_TTL = '24h';
 
 const signAccessToken = (userId) =>
@@ -38,13 +38,20 @@ async function issueTokens(userId) {
   return { accessToken: signAccessToken(userId), refreshToken: await issueRefreshToken(userId) };
 }
 
-// Validates + rotates a refresh token. Returns the new token pair, or null if invalid/expired.
-async function rotateRefreshToken(raw) {
+// Validates a refresh token and mints a new access token. The refresh token is reusable and
+// its expiry slides forward on every use, so an active user never falls off. Deliberately not
+// single-use: rotation made concurrent tabs (and any lost response) invalidate each other's
+// token, which logged everyone out mid-session. Returns a token pair, or null if invalid.
+async function renewSession(raw) {
   const existing = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(raw) } });
   if (!existing) return null;
-  await prisma.refreshToken.delete({ where: { id: existing.id } });
-  if (existing.expiresAt < new Date()) return null;
-  return issueTokens(existing.userId);
+  if (existing.expiresAt < new Date()) {
+    await prisma.refreshToken.delete({ where: { id: existing.id } });
+    return null;
+  }
+  const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 86400_000);
+  await prisma.refreshToken.update({ where: { id: existing.id }, data: { expiresAt } });
+  return { accessToken: signAccessToken(existing.userId), refreshToken: raw };
 }
 
 // Revokes a refresh token if it exists (idempotent).
@@ -57,6 +64,6 @@ module.exports = {
   signVerifyToken,
   verifyVerifyToken,
   issueTokens,
-  rotateRefreshToken,
+  renewSession,
   revokeRefreshToken,
 };
