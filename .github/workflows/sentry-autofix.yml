@@ -1,0 +1,17 @@
+name: Sentry Autofix
+on:
+  schedule:
+    - cron: '55 13 * * *'
+  workflow_dispatch:
+    inputs:
+      sentry_issue_id:
+        description: Sentry issue ID to fix now (blank = poll for new issues)
+        required: false
+jobs:
+  autofix:
+    uses: abigayleh/sentry-autofix/.github/workflows/autofix.yml@main
+    with:
+      sentry_project: whats-the-plan
+      base_branch: master
+      sentry_issue_id: ${{ inputs.sentry_issue_id }}
+    secrets: inherit
