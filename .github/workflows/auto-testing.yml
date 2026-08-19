@@ -9,6 +9,11 @@ on:
         required: false
 jobs:
   autofix:
+    # The reusable workflow pushes a fix branch and opens a PR; a called workflow
+    # can never hold more token permission than its caller grants here.
+    permissions:
+      contents: write
+      pull-requests: write
     uses: abigayleh/auto-testing/.github/workflows/autofix.yml@main
     with:
       sentry_project: whats-the-plan
