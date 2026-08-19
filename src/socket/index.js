@@ -1,11 +1,15 @@
 const { verifyAccessToken } = require('../lib/tokens');
 const prisma = require('../lib/prisma');
+const { captureException, isRoutineTokenError } = require('../lib/sentry');
 
 let io = null;
 
 const userRoom = (userId) => `user:${userId}`;
 const groupRoom = (groupId) => `group:${groupId}`;
 const conversationRoom = (id) => `conversation:${id}`;
+
+// Socket.io runs outside Express, so its failures never reach the app's error handler.
+const SOCKET_TAG = { tags: { subsystem: 'socket' } };
 
 function initSocket(server) {
   io = server;
@@ -17,18 +21,27 @@ function initSocket(server) {
     try {
       socket.userId = verifyAccessToken(token).sub;
       next();
-    } catch {
+    } catch (err) {
+      // Expired access tokens are routine; a broken secret or a verifier bug is not.
+      if (!isRoutineTokenError(err)) captureException(err, SOCKET_TAG);
       next(new Error('Unauthorized'));
     }
   });
 
   io.on('connection', async (socket) => {
-    socket.join(userRoom(socket.userId));
-    const memberships = await prisma.groupMember.findMany({
-      where: { userId: socket.userId },
-      select: { groupId: true },
-    });
-    memberships.forEach((m) => socket.join(groupRoom(m.groupId)));
+    socket.on('error', (err) => captureException(err, SOCKET_TAG));
+    try {
+      socket.join(userRoom(socket.userId));
+      const memberships = await prisma.groupMember.findMany({
+        where: { userId: socket.userId },
+        select: { groupId: true },
+      });
+      memberships.forEach((m) => socket.join(groupRoom(m.groupId)));
+    } catch (err) {
+      // Without this the room join rejects into an unhandled promise and the user silently
+      // receives no realtime updates for the whole session.
+      captureException(err, SOCKET_TAG);
+    }
   });
 }
 

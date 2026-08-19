@@ -1,6 +1,11 @@
 // Email sending via Resend's REST API using the built-in fetch — no SDK dependency.
 // Env: RESEND_API_KEY (required to actually send), RESEND_FROM_EMAIL, ADMIN_NOTIFICATION_EMAIL.
 
+const { captureException } = require('./sentry');
+
+// Sends are fire-and-forget by design, so this file is the only place a failure is visible.
+const EMAIL_TAG = { tags: { subsystem: 'email' } };
+
 const escapeHtml = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -66,6 +71,7 @@ async function sendEmail({ to, subject, html }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn(`RESEND_API_KEY not set — skipping email "${subject}" to ${to}`);
+    captureException(new Error('RESEND_API_KEY not set — email skipped'), EMAIL_TAG);
     return;
   }
   try {
@@ -74,9 +80,14 @@ async function sendEmail({ to, subject, html }) {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: fromEmail(), to, subject, html }),
     });
-    if (!res.ok) console.error(`Resend rejected "${subject}" (${res.status}):`, await res.text());
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`Resend rejected "${subject}" (${res.status}):`, body);
+      captureException(new Error(`Resend rejected email (${res.status})`), { ...EMAIL_TAG, extra: { body } });
+    }
   } catch (err) {
     console.error(`Email send failed for "${subject}":`, err);
+    captureException(err, EMAIL_TAG);
   }
 }
 

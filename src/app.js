@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const Sentry = require('@sentry/node');
 const { router: authRouter } = require('./routes/auth');
 const usersRouter = require('./routes/users');
 const groupsRouter = require('./routes/groups');
@@ -13,6 +14,7 @@ const itinerariesRouter = require('./routes/itineraries');
 const geocodeRouter = require('./routes/geocode');
 const { router: pagesRouter } = require('./routes/pages');
 const requireAuth = require('./middleware/requireAuth');
+const { tagDemoAccountErrors } = require('./lib/sentry');
 
 // Builds the Express app (routes + middleware) with no server or socket attached, so tests
 // can drive it via supertest. index.js wraps this in an HTTP server + Socket.io and listens.
@@ -37,6 +39,12 @@ app.use('/api/polls', requireAuth, pollsRouter);
 app.use('/api/itineraries', requireAuth, itinerariesRouter);
 app.use('/api/geocode', requireAuth, geocodeRouter);
 app.use('/api/pages', requireAuth, pagesRouter);
+
+// Sentry must see the error before the handler below swallows it into a generic 500.
+if (process.env.SENTRY_DSN) {
+  app.use(tagDemoAccountErrors);
+  Sentry.setupExpressErrorHandler(app);
+}
 
 // JSON error handler — keeps unexpected errors from leaking stack traces.
 app.use((err, _req, res, _next) => {

@@ -9,6 +9,7 @@ const { publicUser } = require('../lib/serializers');
 const requireAuth = require('../middleware/requireAuth');
 const { rateLimit } = require('../lib/rateLimit');
 const { DEMO_EMAIL } = require('../lib/demoAccount');
+const { captureException, tagDemo, isRoutineTokenError } = require('../lib/sentry');
 
 const router = express.Router();
 
@@ -41,9 +42,9 @@ router.post('/register', async (req, res) => {
       return created;
     });
     // No tokens yet — the account is unverified. Email them a verification link and tell the
-    // owner. Both sends are best-effort so a mail hiccup never fails the signup.
-    void sendVerificationEmail(user, verifyLink(user.id));
-    void notifyAdminOfNewUser(user);
+    // owner. Both stay fire-and-forget so a mail hiccup never fails the signup, just not silent.
+    sendVerificationEmail(user, verifyLink(user.id)).catch(captureException);
+    notifyAdminOfNewUser(user).catch(captureException);
     return res.status(201).json({ status: 'verification_sent', email: user.email });
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ error: 'Email already registered' });
@@ -73,6 +74,7 @@ router.post('/login', async (req, res) => {
 // read and reuse on the real login form.
 // A 404 when the account is absent: a database without it shouldn't advertise a demo.
 router.post('/demo', demoLimiter, async (req, res) => {
+  tagDemo();
   const user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
   if (!user) return res.status(404).json({ error: 'Not found' });
 
@@ -86,7 +88,11 @@ router.post('/verify', async (req, res) => {
   let payload;
   try {
     payload = verifyVerifyToken(token);
-  } catch {
+  } catch (err) {
+    // An expired or tampered link is routine and stays quiet; anything else here (a missing or
+    // rotated signing secret, say) breaks verification for everyone and is indistinguishable
+    // from the outside, so it has to be reported.
+    if (!isRoutineTokenError(err)) captureException(err);
     return res.status(400).json({ error: 'Invalid or expired verification link', code: 'INVALID_TOKEN' });
   }
   // updateMany so a missing user (e.g. deleted account) yields count 0 rather than throwing;
@@ -101,7 +107,10 @@ router.post('/verify', async (req, res) => {
 router.post('/resend-verification', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const user = await prisma.user.findUnique({ where: { email } });
-  if (user && !user.emailVerified) void sendVerificationEmail(user, verifyLink(user.id));
+  // This route answers 'ok' either way so it can't be used to probe registered emails, which
+  // also means a failed send leaves no trace anywhere else.
+  if (user && !user.emailVerified)
+    sendVerificationEmail(user, verifyLink(user.id)).catch(captureException);
   return res.json({ status: 'ok' });
 });
 
