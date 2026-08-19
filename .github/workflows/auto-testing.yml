@@ -1,4 +1,4 @@
-name: Sentry Autofix
+name: Auto Testing
 on:
   schedule:
     - cron: '55 13 * * *'
@@ -9,7 +9,7 @@ on:
         required: false
 jobs:
   autofix:
-    uses: abigayleh/sentry-autofix/.github/workflows/autofix.yml@main
+    uses: abigayleh/auto-testing/.github/workflows/autofix.yml@main
     with:
       sentry_project: whats-the-plan
       base_branch: master
