@@ -45,7 +45,11 @@ router.post('/register', async (req, res) => {
     // owner. Both stay fire-and-forget so a mail hiccup never fails the signup, just not silent.
     sendVerificationEmail(user, verifyLink(user.id)).catch(captureException);
     notifyAdminOfNewUser(user).catch(captureException);
-    return res.status(201).json({ status: 'verification_sent', email: user.email });
+    const payload = { status: 'verification_sent', email: user.email };
+    // Lets the E2E suite drive the real /verify flow without an inbox. Never set in production;
+    // src/index.js refuses to boot with this enabled against a non-local database.
+    if (process.env.E2E_EXPOSE_VERIFY_TOKEN === '1') payload.verifyToken = signVerifyToken(user.id);
+    return res.status(201).json(payload);
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ error: 'Email already registered' });
     throw err;
