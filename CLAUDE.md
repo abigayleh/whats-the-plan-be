@@ -1,5 +1,15 @@
 # PlanTogether — Claude Code Project Brief
 
+## Working agreement
+
+Claude merges finished work to `master` itself in this repo — that is what the tracked
+`.claude/allow-merge-to-base` marker enables. The flow stays: branch in its own worktree,
+rebase onto current `master`, `merge --ff-only`, then remove the worktree and delete the
+branch. Pushing `master` is still blocked, so a merge lands locally until it is pushed by
+hand.
+
+---
+
 ## Project Overview
 
 A general-purpose collaborative planning app. Users create and join named **Groups** (friend groups, roommates, trip crews, work teams — anything). Each group gets a shared calendar, lists, tasks, polls, and itineraries. Users can also chat 1-on-1 or in multi-person threads with anyone they share a group with. Everything is either private to the user, or scoped to a specific group.
@@ -16,7 +26,7 @@ A general-purpose collaborative planning app. Users create and join named **Grou
 | Auth | JWT (access + refresh tokens) |
 | ORM | Prisma |
 | Styling | SASS (SCSS) |
-| File Storage | Local filesystem (swap to S3 later) |
+| File Storage | Supabase Storage (local-filesystem fallback for dev/E2E) |
 | Real-time | Socket.io |
 
 ---

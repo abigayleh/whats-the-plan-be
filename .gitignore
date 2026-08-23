@@ -4,3 +4,8 @@ dist/
 uploads/
 *.log
 scripts/seed-demo-manifest.json
+
+# Claude Code: the merge-to-base marker is shared; everything else here is machine-local.
+.claude/settings.local.json
+.claude/worktrees/
+.claude/agent-memory/
