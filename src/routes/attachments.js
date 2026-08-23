@@ -55,6 +55,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     entityType: taskId ? 'task' : 'page',
     entityId: taskId || pageId,
     storedName,
+    contentType: req.file.mimetype,
   });
   const att = await prisma.attachment.create({
     data: {

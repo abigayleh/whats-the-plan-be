@@ -14,7 +14,7 @@ Built with **Express 5**, **Prisma** (PostgreSQL / Supabase), **Socket.io**, and
 - **Groups** — create, invite by code, join/leave, member roles (member/admin)
 - **Calendar** — events with recurrence, multi-group filtering, itinerary banners
 - **Lists & tasks** — group-scoped or private, subtasks, due dates, assignment
-- **Attachments** — file/photo uploads on tasks (local filesystem, S3-swappable)
+- **Attachments** — file/photo uploads on tasks and pages (Supabase Storage, local-filesystem fallback)
 - **Polls** — group-scoped, one vote per user, live results
 - **Itineraries** — multi-day trips with linked child events and notes pages
 - **Geocoding** — proxied through the backend to avoid CORS
@@ -53,6 +53,21 @@ The server listens on `PORT` (default `4000`). Health check: `GET /api/health`.
 | `RESEND_API_KEY` | Resend key for outbound email (optional — skipped if unset) |
 | `RESEND_FROM_EMAIL` | From address for emails |
 | `ADMIN_NOTIFICATION_EMAIL` | Where new-signup notices are sent |
+| `SUPABASE_URL` | Supabase project URL — enables Supabase Storage for attachments |
+| `SUPABASE_SERVICE_KEY` | Service-role key, for server-side bucket reads and writes |
+| `SUPABASE_STORAGE_BUCKET` | Bucket name (e.g. `attachments`) |
+
+**Attachment storage.** Set all three `SUPABASE_*` variables and uploads go to Supabase
+Storage; leave any of them unset and they fall back to `./uploads` on local disk, which is
+what dev and the E2E suite use. **Any deployed instance must set them** — `uploads/` is
+gitignored, so a deployed host starts with an empty directory on every release while the
+`Attachment` rows persist, and every older image then 404s. To lift files already on local
+disk into the bucket, under the keys existing rows already record:
+
+```bash
+node scripts/upload-local-attachments.mjs          # list what would be uploaded
+node scripts/upload-local-attachments.mjs --write  # upload
+```
 
 `.env` is gitignored — never commit real secrets. See `.env.example` for the template.
 
