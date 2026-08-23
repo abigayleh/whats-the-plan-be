@@ -5,8 +5,11 @@
 Claude merges finished work to `master` itself in this repo — that is what the tracked
 `.claude/allow-merge-to-base` marker enables. The flow stays: branch in its own worktree,
 rebase onto current `master`, `merge --ff-only`, then remove the worktree and delete the
-branch. Pushing `master` is still blocked, so a merge lands locally until it is pushed by
-hand.
+branch.
+
+Claude also pushes `master` here — the `.claude/allow-push-to-base` marker. Force-pushing
+the base and `git push --mirror` stay blocked regardless; those need a human. Both markers
+are per-repo, so this grant covers this repo only.
 
 ---
 
