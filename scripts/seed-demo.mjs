@@ -11,25 +11,36 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { DEMO_USERS, MEMBERSHIPS, events, lists, itineraries, polls, pages } from './demoContent.mjs';
 
-const TARGET_EMAIL = 'abigayle100@icloud.com';
+const TARGET_EMAIL = process.env.DEMO_TARGET_EMAIL || 'abigayle100@icloud.com';
 const GROUP_NAMES = { family: 'Family Group', friends: 'Friends' };
 const DEMO_PASSWORD = 'DemoPass123!';
 
-const MANIFEST = join(dirname(fileURLToPath(import.meta.url)), 'seed-demo-manifest.json');
+// A separate target needs a separate manifest, or its undo would clobber the other's record.
+const MANIFEST = join(dirname(fileURLToPath(import.meta.url)), process.env.DEMO_MANIFEST || 'seed-demo-manifest.json');
 const prisma = new PrismaClient();
 const mode = process.argv.includes('--undo') ? 'undo' : process.argv.includes('--dry') ? 'dry' : 'write';
+const CREATE_GROUPS = process.env.DEMO_CREATE_GROUPS === '1';
+// Seeding a second account needs its own demo people; the emails are unique per run.
+const USER_SUFFIX = process.env.DEMO_USER_SUFFIX || '';
+const demoEmail = (email) => (USER_SUFFIX ? email.replace('@', `.${USER_SUFFIX}@`) : email);
 
-const empty = () => ({ users: [], groupMembers: [], lists: [], tasks: [], events: [], itineraries: [], polls: [], pages: [], restore: [] });
+const empty = () => ({ users: [], groups: [], groupMembers: [], lists: [], tasks: [], events: [], itineraries: [], polls: [], pages: [], restore: [] });
 
-async function resolveTarget() {
-  const user = await prisma.user.findUnique({ where: { email: TARGET_EMAIL } });
+async function resolveTarget(db, m) {
+  const user = await db.user.findUnique({ where: { email: TARGET_EMAIL } });
   if (!user) throw new Error(`No account for ${TARGET_EMAIL}`);
-  const memberships = await prisma.groupMember.findMany({ where: { userId: user.id }, include: { group: true } });
+  const memberships = await db.groupMember.findMany({ where: { userId: user.id }, include: { group: true } });
   const groups = {};
   for (const [key, name] of Object.entries(GROUP_NAMES)) {
-    const found = memberships.find((m) => m.group.name === name);
-    if (!found) throw new Error(`${TARGET_EMAIL} is not a member of a group named "${name}"`);
-    groups[key] = found.groupId;
+    const found = memberships.find((member) => member.group.name === name);
+    if (found) { groups[key] = found.groupId; continue; }
+    // Default stays strict: the portfolio account's groups are real and must not be duplicated.
+    if (!CREATE_GROUPS) throw new Error(`${TARGET_EMAIL} is not a member of a group named "${name}"`);
+    const created = await db.group.create({
+      data: { name, members: { create: { userId: user.id, role: 'ADMIN', color: 'primary' } } },
+    });
+    groups[key] = created.id;
+    m.groups.push(created.id);
   }
   return { user, groups };
 }
@@ -42,7 +53,7 @@ async function seed(db, { user, groups }, m) {
   const people = { me: user.id };
   for (const person of DEMO_USERS) {
     const created = track('users', await db.user.create({
-      data: { email: person.email, name: person.name, passwordHash, emailVerified: true },
+      data: { email: demoEmail(person.email), name: person.name, passwordHash, emailVerified: true },
     }));
     people[person.key] = created.id;
     track('lists', await db.list.create({ data: { name: 'My to dos', ownerId: created.id, groupId: null } }));
@@ -176,6 +187,8 @@ async function undo() {
   for (const key of m.groupMembers) await prisma.groupMember.deleteMany({ where: key });
   await prisma.refreshToken.deleteMany({ where: { userId: { in: m.users } } });
   await prisma.user.deleteMany(byId(m.users));
+  // Only groups this run created; a pre-existing group is never in the manifest.
+  await prisma.group.deleteMany(byId(m.groups ?? []));
 
   writeFileSync(MANIFEST, JSON.stringify(empty(), null, 2));
   console.log('Undone. Manifest cleared.');
@@ -184,13 +197,12 @@ async function undo() {
 async function main() {
   if (mode === 'undo') return undo();
 
-  const target = await resolveTarget();
   const m = empty();
   const counts = () => Object.entries(m).map(([k, v]) => `${k}=${v.length}`).join(' ');
 
   if (mode === 'dry') {
     await prisma.$transaction(async (tx) => {
-      await seed(tx, target, m);
+      await seed(tx, await resolveTarget(tx, m), m);
       console.log('Dry run OK —', counts());
       throw new Error('__rollback__');
     }, { maxWait: 15000, timeout: 180000 }).catch((err) => {
@@ -203,7 +215,7 @@ async function main() {
   if (existsSync(MANIFEST) && JSON.parse(readFileSync(MANIFEST, 'utf8')).users.length)
     throw new Error('Manifest still holds seeded ids — run --undo first');
 
-  await prisma.$transaction(async (tx) => seed(tx, target, m), { maxWait: 15000, timeout: 180000 });
+  await prisma.$transaction(async (tx) => seed(tx, await resolveTarget(tx, m), m), { maxWait: 15000, timeout: 180000 });
   writeFileSync(MANIFEST, JSON.stringify(m, null, 2));
   console.log('Seeded —', counts());
   console.log(`Demo members sign in with: ${DEMO_PASSWORD}`);
