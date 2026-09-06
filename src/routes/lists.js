@@ -75,6 +75,9 @@ function buildTaskData(body, { partial }) {
   if (body.status !== undefined) {
     if (!TASK_STATUSES.includes(body.status)) return { error: 'Invalid status' };
     data.status = body.status;
+    // Stamped here rather than inferred later: the sweep needs to know *when* it was done,
+    // and un-doing clears it so a revived to-do can't be swept on its old completion.
+    data.completedAt = body.status === 'DONE' ? new Date() : null;
   }
   for (const field of DATE_FIELDS) {
     if (body[field] === undefined) continue;

@@ -156,6 +156,9 @@ model Task {
   createdById    String
   attachments    Attachment[]
   createdAt      DateTime     @default(now())
+  // Set when status becomes DONE, cleared when it is un-done. Drives the old-to-do sweep;
+  // null on a recurring series, which completes per-occurrence and is never swept.
+  completedAt    DateTime?
 }
 
 model Attachment {

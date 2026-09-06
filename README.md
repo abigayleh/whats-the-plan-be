@@ -15,6 +15,7 @@ Built with **Express 5**, **Prisma** (PostgreSQL / Supabase), **Socket.io**, and
 - **Calendar** — events with recurrence, multi-group filtering, itinerary banners
 - **Lists & tasks** — group-scoped or private, subtasks, due dates, assignment
 - **Attachments** — file/photo uploads on tasks and pages (Supabase Storage, local-filesystem fallback)
+- **Task cleanup** — completed one-off to-dos are deleted a week after completion (see below)
 - **Polls** — group-scoped, one vote per user, live results
 - **Itineraries** — multi-day trips with linked child events and notes pages
 - **Geocoding** — proxied through the backend to avoid CORS
@@ -68,6 +69,15 @@ disk into the bucket, under the keys existing rows already record:
 node scripts/upload-local-attachments.mjs          # list what would be uploaded
 node scripts/upload-local-attachments.mjs --write  # upload
 ```
+
+### Completed-to-do cleanup
+
+`src/lib/taskCleanup.js` deletes finished one-off to-dos a week after they were completed,
+on boot and then daily. Recurring series are never touched — they have no single completion,
+and removing one would take every future occurrence with it. `Task.completedAt` is stamped
+when a to-do is marked DONE and cleared when it is un-done; to-dos completed before that
+column existed were backfilled to the migration date, so they became eligible a week later.
+Retention lives in `RETAIN_DAYS`.
 
 `.env` is gitignored — never commit real secrets. See `.env.example` for the template.
 
