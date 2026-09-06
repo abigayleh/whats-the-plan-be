@@ -26,6 +26,14 @@ const addYears = (date, n) => {
   return d;
 };
 
+// Calendar day arithmetic, not fixed milliseconds: a DST day is 23 or 25 hours long, so
+// adding 86400000ms across a boundary lands on the wrong date. setDate handles that.
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
 function startOfDay(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -53,7 +61,7 @@ function atOriginalTime(dayStart, start) {
 function occurrenceAt(start, rule, i) {
   switch (rule.frequency) {
     case 'daily':
-      return new Date(start.getTime() + i * rule.interval * DAY_MS);
+      return addDays(start, i * rule.interval);
     case 'monthly':
       return addMonths(start, i * rule.interval);
     case 'yearly':
@@ -77,11 +85,11 @@ function firstIndex(start, rule, windowStart) {
 // the same single-occurrence-per-week behavior this rule had before.
 function weeklyOccurrencesInBlock(start, rule, blockIndex) {
   const anchorWeek = startOfWeek(start);
-  const blockWeekStart = new Date(anchorWeek.getTime() + blockIndex * rule.interval * 7 * DAY_MS);
+  const blockWeekStart = addDays(anchorWeek, blockIndex * rule.interval * 7);
   const daysOfWeek = rule.daysOfWeek?.length ? rule.daysOfWeek : [start.getDay()];
   return [...daysOfWeek]
     .sort((a, b) => a - b)
-    .map((dow) => atOriginalTime(new Date(blockWeekStart.getTime() + dow * DAY_MS), start))
+    .map((dow) => atOriginalTime(addDays(blockWeekStart, dow), start))
     .filter((d) => d >= start); // never emit an occurrence before the event's own start
 }
 

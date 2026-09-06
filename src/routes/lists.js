@@ -4,6 +4,7 @@ const { getMembership } = require('../lib/membership');
 const { loadListAccess, loadEditableTask, isValidAssignee } = require('../lib/listAccess');
 const { serializeAttachment, publicUser } = require('../lib/serializers');
 const { isValidRule, snapToOccurrence } = require('../lib/recurrence');
+const { remapOccurrenceDates, toggleOccurrenceDate } = require('../lib/occurrenceDates');
 const { isValidSubtasks } = require('../lib/subtasks');
 const { emitToGroup, emitToUser } = require('../socket');
 
@@ -333,9 +334,8 @@ router.patch('/:listId/tasks/:id', async (req, res) => {
     if (isNaN(sent.getTime())) return res.status(400).json({ error: 'Invalid occurrenceDate' });
     // The client may only know which day it means (ticking a missed occurrence from Overdue),
     // and can't reproduce the expansion's exact time-of-day across timezones — so snap.
-    const iso = snapToOccurrence(result.task, sent).toISOString();
-    const current = result.task.completedDates || [];
-    const next = current.includes(iso) ? current.filter((d) => d !== iso) : [...current, iso];
+    const occurrence = snapToOccurrence(result.task, sent);
+    const next = toggleOccurrenceDate(result.task.completedDates, occurrence);
     const task = await prisma.task.update({
       where: { id: req.params.id }, data: { completedDates: next }, include: taskInclude,
     });
@@ -373,6 +373,22 @@ router.patch('/:listId/tasks/:id', async (req, res) => {
 
   const scheduleError = validateSchedule({ ...result.task, ...data });
   if (scheduleError) return res.status(400).json({ error: scheduleError });
+
+  // A changed anchor or rule moves every occurrence, orphaning ticks that point at the old
+  // instants. Re-anchor them onto the new schedule: days that still recur stay ticked, days
+  // that no longer exist in the series are dropped.
+  const SCHEDULE_KEYS = ['dueDate', 'scheduledStart', 'recurrenceRule'];
+  if (SCHEDULE_KEYS.some((k) => k in data)) {
+    const next = { ...result.task, ...data };
+    if (next.recurrenceRule) {
+      data.completedDates = remapOccurrenceDates(result.task.completedDates, next);
+      data.skippedDates = remapOccurrenceDates(result.task.skippedDates, next);
+    } else {
+      // No longer a series — per-occurrence state has nothing left to refer to.
+      data.completedDates = [];
+      data.skippedDates = [];
+    }
+  }
 
   // Moving a task re-scopes it, so the target list drives the assignee check.
   let targetList = result.list;
