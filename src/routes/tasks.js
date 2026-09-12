@@ -3,6 +3,8 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { serializeTask } = require('./lists');
 const { expandOccurrences, isValidRule, withoutSkipped } = require('../lib/recurrence');
+const { loadListAccess } = require('../lib/listAccess');
+const { sendPushToUser } = require('../lib/push');
 
 const router = express.Router();
 
@@ -79,6 +81,27 @@ router.get('/calendar', async (req, res) => {
     orderBy: { dueDate: 'asc' },
   });
   res.json(tasks.flatMap((task) => expandTask(task, startDate, endDate)));
+});
+
+// Nudges the assignee with a push, for a to-do someone else is waiting on. Viewing rights are
+// enough to send one — reminding a teammate isn't an edit, so this doesn't need loadEditableTask.
+router.post('/:id/remind', async (req, res) => {
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+
+  const access = await loadListAccess(task.listId, req.userId);
+  if (access.error) return res.status(access.status).json({ error: access.error });
+
+  if (!task.assignedToId) return res.status(400).json({ error: 'This to-do has no assignee' });
+  if (task.assignedToId === req.userId)
+    return res.status(400).json({ error: "You can't send yourself a reminder" });
+
+  await sendPushToUser(task.assignedToId, {
+    title: "What's the Plan?",
+    body: `Reminder: "${task.title}" is waiting on you`,
+    data: { taskId: task.id, listId: task.listId },
+  });
+  res.status(204).end();
 });
 
 module.exports = router;

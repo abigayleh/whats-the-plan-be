@@ -41,6 +41,29 @@ router.post('/me/password', blockDemoAccount, async (req, res) => {
   res.status(204).end();
 });
 
+// Registers (or re-owns, if another user was last signed in on this device) this device's
+// Expo push token. Called on login and on every app foreground, so it stays current.
+router.put('/me/push-token', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'token required' });
+
+  await prisma.pushToken.upsert({
+    where: { token },
+    create: { token, userId: req.userId },
+    update: { userId: req.userId },
+  });
+  res.status(204).end();
+});
+
+// Called on logout, so a signed-out device stops receiving this user's reminders.
+router.delete('/me/push-token', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'token required' });
+
+  await prisma.pushToken.deleteMany({ where: { token, userId: req.userId } });
+  res.status(204).end();
+});
+
 router.delete('/me', blockDemoAccount, async (req, res) => {
   const userId = req.userId;
 
@@ -81,6 +104,7 @@ router.delete('/me', blockDemoAccount, async (req, res) => {
     // (Task.assignedToId is onDelete: SetNull, so the DB handles that one automatically.)
     await tx.conversationParticipant.deleteMany({ where: { userId } });
     await tx.refreshToken.deleteMany({ where: { userId } });
+    await tx.pushToken.deleteMany({ where: { userId } });
 
     await tx.user.delete({ where: { id: userId } });
 

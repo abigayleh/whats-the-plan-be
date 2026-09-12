@@ -3,8 +3,8 @@ import { app, tokenFor, bearer } from './helpers.js';
 
 const auth = bearer(tokenFor());
 
-// GET /calendar validates the date window before querying. GET /assigned-to-me queries
-// immediately (no pre-DB guard beyond auth, covered by the 401 sweep).
+// GET /calendar validates the date window before querying. GET /assigned-to-me and
+// POST /:id/remind query immediately (no pre-DB guard beyond auth, covered by the 401 sweep).
 describe('GET /api/tasks/calendar (pre-DB window validation)', () => {
   it('400 when start/end are missing', async () => {
     const res = await request(app).get('/api/tasks/calendar').set(auth);

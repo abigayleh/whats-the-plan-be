@@ -24,3 +24,20 @@ describe('PATCH /api/users/me (pre-DB name validation)', () => {
     expect(res.body.code).toBe('INVALID_NAME');
   });
 });
+
+describe('PUT/DELETE /api/users/me/push-token (pre-DB token validation)', () => {
+  it('PUT 400 on missing token', async () => {
+    const res = await request(app).put('/api/users/me/push-token').set(auth).send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT 400 on blank token', async () => {
+    const res = await request(app).put('/api/users/me/push-token').set(auth).send({ token: '   ' });
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE 400 on missing token', async () => {
+    const res = await request(app).delete('/api/users/me/push-token').set(auth).send({});
+    expect(res.status).toBe(400);
+  });
+});
